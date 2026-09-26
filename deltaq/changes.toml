@@ -11,3 +11,11 @@
 # head_sha = "abc..."          # Zed PR head (or own branch head) merged into `gpui` so far
 # files = ["crates/gpui/src/window.rs"]   # paths touched, used to auto-resolve conflicts
 # status = "tracking"          # tracking | merged-upstream | closed-upstream | done
+
+[[change]]
+name = "http-client-async-std-unstable"
+kind = "own"
+zed_pr = 0
+head_sha = ""
+files = []
+status = "tracking"
