@@ -6,33 +6,64 @@
 # Creates change/pr-<N> from the PR head, merges it into a branch off `gpui`,
 # strips non-kept paths the PR may touch, and records it in changes.toml.
 # track-changes then follows the PR until Zed merges or closes it.
+#
+# If the merge leaves real conflicts, the script exits 2 with the merge in
+# progress. Resolve and `git add` them, then run the same command again on
+# adopt/pr-<N> to finish.
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 cd "$ROOT"
 
 number="${1:?usage: adopt-pr <zed-pr-number>}"
-require_clean_tree
-ensure_upstream_remote
+name="pr-${number}"
+change_branch="change/${name}"
+adopt_branch="adopt/${name}"
 
+resuming=false
+if [[ "$(git branch --show-current)" == "$adopt_branch" ]] \
+    && git rev-parse --verify --quiet MERGE_HEAD >/dev/null \
+    && [[ "$(git rev-parse MERGE_HEAD)" == "$(git rev-parse "$change_branch")" ]]; then
+    resuming=true
+fi
+
+ensure_upstream_remote
 pr_json="$(gh api "repos/${UPSTREAM_REPO}/pulls/${number}")"
 state="$(jq -r '.state' <<<"$pr_json")"
 merged="$(jq -r '.merged' <<<"$pr_json")"
-head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
 title="$(jq -r '.title' <<<"$pr_json")"
 if [[ "$state" != "open" || "$merged" == "true" ]]; then
     echo "error: Zed #${number} is ${state} (merged=${merged}); sync-upstream instead" >&2
     exit 1
 fi
 
-name="pr-${number}"
-git fetch upstream "pull/${number}/head:change/${name}"
-git checkout -q -b "adopt/${name}" "$MAIN_BRANCH"
-if ! git merge --no-ff --no-commit "change/${name}" -m "Adopt Zed #${number}: ${title}" >/dev/null 2>&1; then
-    echo "merge conflicts; resolve them, then re-run with the same number to record the change" >&2
+if [[ "$resuming" == false ]]; then
+    require_clean_tree
+    git fetch --no-tags upstream "pull/${number}/head:${change_branch}"
+    git checkout -q -b "$adopt_branch" "$MAIN_BRANCH"
+    git merge --no-ff --no-commit "$change_branch" >/dev/null 2>&1 || true
 fi
+# The PR head may move while conflicts are being resolved; record what was merged.
+head_sha="$(git rev-parse "$change_branch")"
+
 deltaq/scripts/strip
+
+# The root manifest is generated, so keep ours and let regeneration pick up the
+# PR's crate-level dependency changes.
+for generated in Cargo.toml Cargo.lock; do
+    if git diff --name-only --diff-filter=U | grep -qx "$generated"; then
+        git checkout --ours -- "$generated"
+    fi
+done
 regenerate_workspace
 git add Cargo.toml Cargo.lock
+
+remaining="$(git diff --name-only --diff-filter=U)"
+if [[ -n "$remaining" ]]; then
+    echo "manual conflicts remain:" >&2
+    echo "$remaining" >&2
+    echo "resolve and git add them, then re-run: deltaq/scripts/adopt-pr ${number}" >&2
+    exit 2
+fi
 
 files="$(gh pr diff "$number" -R "$UPSTREAM_REPO" --name-only | deltaq/scripts/kept-paths | jq -R . | jq -sc .)"
 deltaq/scripts/track-changes --record \
@@ -40,8 +71,5 @@ deltaq/scripts/track-changes --record \
     --head-sha "$head_sha" --files "$files"
 git add deltaq/changes.toml
 
-if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
-    exit 2
-fi
 git commit -q -m "Adopt Zed #${number}: ${title}" -m "${UPSTREAM_URL}/pull/${number} at ${head_sha}"
-echo "created adopt/${name}; open a PR against $MAIN_BRANCH"
+echo "created ${adopt_branch}; open a PR against $MAIN_BRANCH"

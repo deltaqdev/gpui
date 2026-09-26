@@ -12,6 +12,7 @@
 # files = ["crates/gpui/src/window.rs"]   # paths touched, used to auto-resolve conflicts
 # status = "tracking"          # tracking | merged-upstream | closed-upstream | done
 
+
 [[change]]
 name = "http-client-async-std-unstable"
 kind = "own"
@@ -26,4 +27,12 @@ kind = "own"
 zed_pr = 0
 head_sha = ""
 files = ["crates/gpui_windows/Cargo.toml"]
+status = "tracking"
+
+[[change]]
+name = "pr-62379"
+kind = "upstream-pr"
+zed_pr = 62379
+head_sha = "5b1e8e435abc6df27cd34159b1962a57d3237d48"
+files = ["Cargo.lock", "crates/gpui/Cargo.toml", "crates/gpui/examples/README.md", "crates/gpui/examples/native_webview.html", "crates/gpui/examples/native_webview.rs", "crates/gpui/src/composition.rs", "crates/gpui/src/gpui.rs", "crates/gpui/src/platform.rs", "crates/gpui/src/scene.rs", "crates/gpui/src/window.rs", "crates/gpui_apple/src/metal_renderer.rs", "crates/gpui_macos/src/window.rs", "crates/gpui_windows/src/directx_renderer.rs", "crates/gpui_windows/src/platform.rs", "crates/gpui_windows/src/window.rs"]
 status = "tracking"
