@@ -13,6 +13,14 @@
 # status = "tracking"          # tracking | merged-upstream | closed-upstream | done
 
 [[change]]
+name = "http-client-async-std-unstable"
+kind = "own"
+zed_pr = 0
+head_sha = ""
+files = ["crates/http_client/Cargo.toml", "Cargo.lock"]
+status = "tracking"
+
+[[change]]
 name = "gpui-windows-test-support"
 kind = "own"
 zed_pr = 0
