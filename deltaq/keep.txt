@@ -1,0 +1,76 @@
+# Paths kept from upstream zed-industries/zed. One path prefix per line.
+# A trailing slash keeps a whole directory. Everything else upstream ships is
+# removed by `deltaq/scripts/strip`, both on the initial trim and on every sync.
+#
+# The crate set is the GPUI publish closure (upstream computes it with
+# `cargo xtask gpui list`; xtask itself is GPL so it is not kept). Re-check it whenever a sync fails on a
+# missing path dependency.
+
+# GPUI crates
+crates/gpui/
+crates/gpui_apple/
+crates/gpui_linux/
+crates/gpui_macos/
+crates/gpui_macros/
+crates/gpui_platform/
+crates/gpui_shared_string/
+crates/gpui_tokio/
+crates/gpui_util/
+crates/gpui_web/
+crates/gpui_wgpu/
+crates/gpui_windows/
+
+# In-workspace dependencies of GPUI
+crates/collections/
+crates/http_client/
+crates/http_client_tls/
+crates/path/
+crates/refineable/
+crates/reqwest_client/
+crates/scheduler/
+crates/sum_tree/
+crates/util/
+crates/util_macros/
+crates/zlog/
+crates/ztracing/
+crates/ztracing_macro/
+
+# Tooling
+tooling/perf/
+tooling/lints/
+
+# Fonts embedded by gpui via include_bytes! (svg_renderer.rs, examples)
+assets/fonts/
+
+# Root build configuration
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
+rustfmt.toml
+clippy.toml
+.cargo/config.toml
+.config/typos.toml
+.config/nextest.toml
+.gitattributes
+.gitignore
+.git-blame-ignore-revs
+LICENSE-APACHE
+
+# Scripts and license tooling still used by this fork
+script/clippy
+script/clippy.ps1
+script/licenses/
+
+# Files this fork owns outright (upstream versions are replaced, see sync-upstream)
+README.md
+.rules
+CLAUDE.md
+AGENTS.md
+
+# Fork-owned directories (never exist upstream)
+deltaq/
+site/
+.github/workflows/deltaq-ci.yml
+.github/workflows/deltaq-sync-upstream.yml
+.github/workflows/deltaq-track-changes.yml
+.github/workflows/deltaq-site.yml

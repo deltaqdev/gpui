@@ -1,0 +1,51 @@
+# Weekly merge of zed-industries/zed main. Opens a PR when the merge is
+# mechanical, an issue when a kept crate conflicts and needs a human.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      # A PAT lets the opened PR trigger CI; GITHUB_TOKEN-created PRs do not.
+      GH_TOKEN: ${{ secrets.DELTAQ_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: gpui
+          token: ${{ secrets.DELTAQ_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+      - run: |
+          git config user.name "deltaq-bot"
+          git config user.email "bot@deltaq.dev"
+      - name: Merge upstream
+        id: sync
+        run: |
+          set +e
+          deltaq/scripts/sync-upstream 2>&1 | tee sync.log
+          echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Open PR
+        if: steps.sync.outputs.exit == '0'
+        run: |
+          branch="$(git rev-parse --abbrev-ref HEAD)"
+          if [[ "$branch" == "gpui" ]]; then echo "nothing to sync"; exit 0; fi
+          git push -u origin "$branch"
+          gh pr create --base gpui --head "$branch" \
+            --title "Sync upstream zed ($(git rev-parse --short upstream/main))" \
+            --body-file <(printf 'Automated merge of upstream main.\n\n```\n%s\n```\n' "$(cat sync.log)")
+      - name: Open issue for manual conflicts
+        if: steps.sync.outputs.exit == '2'
+        run: |
+          gh issue create --title "Upstream sync needs manual conflict resolution" \
+            --body-file <(printf 'Run `deltaq/scripts/sync-upstream` locally.\n\n```\n%s\n```\n' "$(cat sync.log)")
+      - if: steps.sync.outputs.exit != '0' && steps.sync.outputs.exit != '2'
+        run: cat sync.log; exit 1

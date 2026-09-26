@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Adopt an open Zed PR before Zed merges it.
+#
+#   deltaq/scripts/adopt-pr <zed-pr-number>
+#
+# Creates change/pr-<N> from the PR head, merges it into a branch off `gpui`,
+# strips non-kept paths the PR may touch, and records it in changes.toml.
+# track-changes then follows the PR until Zed merges or closes it.
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+cd "$ROOT"
+
+number="${1:?usage: adopt-pr <zed-pr-number>}"
+require_clean_tree
+ensure_upstream_remote
+
+pr_json="$(gh api "repos/${UPSTREAM_REPO}/pulls/${number}")"
+state="$(jq -r '.state' <<<"$pr_json")"
+merged="$(jq -r '.merged' <<<"$pr_json")"
+head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+title="$(jq -r '.title' <<<"$pr_json")"
+if [[ "$state" != "open" || "$merged" == "true" ]]; then
+    echo "error: Zed #${number} is ${state} (merged=${merged}); sync-upstream instead" >&2
+    exit 1
+fi
+
+name="pr-${number}"
+git fetch upstream "pull/${number}/head:change/${name}"
+git checkout -q -b "adopt/${name}" "$MAIN_BRANCH"
+if ! git merge --no-ff --no-commit "change/${name}" -m "Adopt Zed #${number}: ${title}" >/dev/null 2>&1; then
+    echo "merge conflicts; resolve them, then re-run with the same number to record the change" >&2
+fi
+deltaq/scripts/strip
+regenerate_workspace
+git add Cargo.toml Cargo.lock
+
+files="$(gh pr diff "$number" -R "$UPSTREAM_REPO" --name-only | deltaq/scripts/kept-paths | jq -R . | jq -sc .)"
+deltaq/scripts/track-changes --record \
+    --name "$name" --kind upstream-pr --zed-pr "$number" \
+    --head-sha "$head_sha" --files "$files"
+git add deltaq/changes.toml
+
+if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
+    exit 2
+fi
+git commit -q -m "Adopt Zed #${number}: ${title}" -m "${UPSTREAM_URL}/pull/${number} at ${head_sha}"
+echo "created adopt/${name}; open a PR against $MAIN_BRANCH"

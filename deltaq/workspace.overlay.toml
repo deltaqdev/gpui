@@ -1,0 +1,11 @@
+# Fork-owned additions to the generated root Cargo.toml.
+#
+# The root Cargo.toml is regenerated from upstream's on every sync, so crates
+# that exist only in this fork are declared here and spliced in by
+# deltaq/scripts/filter-workspace. Paths must also be listed in deltaq/keep.txt.
+#
+# [workspace]
+# members = ["crates/gpui_devtool"]
+#
+# [workspace.dependencies]
+# gpui_devtool = { path = "crates/gpui_devtool" }

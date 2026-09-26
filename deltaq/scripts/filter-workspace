@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Rewrite the root Cargo.toml so it only references crates present on disk.
+
+Reads upstream's Cargo.toml from stdin (or a file argument) and writes the
+filtered manifest to stdout. Editing is line based on purpose: everything
+upstream wrote stays byte-identical except the entries that point at removed
+crates, which keeps the diff against upstream reviewable.
+
+Filtered:
+  * `members` and `default-members` entries whose directory is gone
+  * `[workspace.dependencies]` entries whose `path = "..."` is gone
+  * `[profile.*.package]` overrides for removed workspace crates, and for
+    external crates no longer in Cargo.lock
+  * `[patch.crates-io]` entries for crates no longer in Cargo.lock, or whose
+    `path = "..."` is gone
+
+Cargo.lock is consulted only if it exists; run cargo once to prune it and then
+run this script again to drop what the prune made unnecessary.
+
+Added from deltaq/workspace.overlay.toml (the only way to add fork-owned crates):
+  * `[workspace] members` entries, appended to the members list
+  * `[workspace.dependencies]` entries, appended to that section
+"""
+import json
+import os
+import re
+import sys
+import tomllib
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+OVERLAY = os.path.join(ROOT, "deltaq", "workspace.overlay.toml")
+
+MEMBER_LINE = re.compile(r'^\s*"([^"]+)",?\s*$')
+KEY_LINE = re.compile(r'^([A-Za-z0-9_\-]+)\s*=')
+PATH_DEP = re.compile(r'path\s*=\s*"([^"]+)"')
+SECTION = re.compile(r'^\[(.+)\]\s*$')
+
+
+def exists(path):
+    return os.path.exists(os.path.join(ROOT, path))
+
+
+def locked_crates():
+    lock = os.path.join(ROOT, "Cargo.lock")
+    if not os.path.exists(lock):
+        return None
+    with open(lock) as file:
+        content = file.read()
+    # `[[patch.unused]]` blocks also carry a name; only real packages count
+    names = set()
+    for block in content.split("[[package]]")[1:]:
+        block = block.split("[[patch.unused]]")[0]
+        match = re.search(r'^name = "([^"]+)"$', block, re.M)
+        if match:
+            names.add(match.group(1))
+    return names
+
+
+def toml_inline(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_inline(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{ " + ", ".join(f"{key} = {toml_inline(item)}" for key, item in value.items()) + " }"
+    return json.dumps(value)
+
+
+def load_overlay():
+    if not os.path.exists(OVERLAY):
+        return [], {}
+    with open(OVERLAY, "rb") as file:
+        overlay = tomllib.load(file)
+    workspace = overlay.get("workspace", {})
+    return workspace.get("members", []), workspace.get("dependencies", {})
+
+
+def main():
+    source = open(sys.argv[1]) if len(sys.argv) > 1 else sys.stdin
+    lines = source.read().split("\n")
+    output = []
+    section = None
+    in_members = False
+    removed_crates = set()
+    locked = locked_crates()
+    overlay_members, overlay_dependencies = load_overlay()
+    existing_members = set()
+    existing_dependencies = set()
+
+    for line in lines:
+        match = SECTION.match(line)
+        if match:
+            if section == "workspace.dependencies":
+                for name, value in overlay_dependencies.items():
+                    if name not in existing_dependencies:
+                        output.append(f"{name} = {toml_inline(value)}")
+            section = match.group(1)
+            in_members = False
+            output.append(line)
+            continue
+
+        if section == "workspace":
+            stripped = line.strip()
+            if stripped.startswith("members = [") or stripped.startswith("default-members = ["):
+                in_members = not stripped.endswith("]")
+                if stripped.startswith("default-members"):
+                    output.append('default-members = ["crates/gpui"]')
+                    in_members = not stripped.endswith("]")
+                    continue
+                output.append(line)
+                continue
+            if in_members:
+                if stripped == "]":
+                    in_members = False
+                    for member in overlay_members:
+                        if member not in existing_members and exists(member):
+                            output.append(f'    "{member}",')
+                    output.append(line)
+                    continue
+                match = MEMBER_LINE.match(line)
+                if match:
+                    member = match.group(1)
+                    if exists(member):
+                        existing_members.add(member)
+                        output.append(line)
+                    else:
+                        removed_crates.add(os.path.basename(member))
+                    continue
+                # comments and blank lines inside the members list stay
+                output.append(line)
+                continue
+            output.append(line)
+            continue
+
+        if section == "workspace.dependencies":
+            match = PATH_DEP.search(line)
+            if match and KEY_LINE.match(line) and not exists(match.group(1)):
+                continue
+            key = KEY_LINE.match(line)
+            if key:
+                existing_dependencies.add(key.group(1))
+            output.append(line)
+            continue
+
+        if section and section.startswith("profile.") and section.endswith(".package"):
+            match = KEY_LINE.match(line)
+            if match and match.group(1) in removed_crates:
+                continue
+            if match and locked is not None and match.group(1) not in locked:
+                continue
+            output.append(line)
+            continue
+
+        if section == "patch.crates-io":
+            match = KEY_LINE.match(line)
+            if match and locked is not None and match.group(1) not in locked:
+                continue
+            path = PATH_DEP.search(line)
+            if match and path and not exists(path.group(1)):
+                continue
+            output.append(line)
+            continue
+
+        output.append(line)
+
+    sys.stdout.write("\n".join(output))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Verify every crate in the dependency graph carries a license this fork
+# accepts, and that first-party crates stay Apache-2.0.
+#
+# Uses upstream's cargo-about configuration (script/licenses/zed-licenses.toml)
+# so the accepted-license list follows Zed's legal review on every sync.
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+cd "$ROOT"
+
+for manifest in crates/*/Cargo.toml crates/*/*/Cargo.toml tooling/*/Cargo.toml; do
+    [[ -f "$manifest" ]] || continue
+    if grep -Eq '^\s*license\s*=' "$manifest" && ! grep -Eq '^\s*license\s*=\s*"Apache-2.0"' "$manifest"; then
+        echo "error: $manifest is not Apache-2.0; this fork only carries Apache-2.0 crates" >&2
+        exit 1
+    fi
+done
+if [[ -e LICENSE-GPL || -e LICENSE-AGPL ]]; then
+    echo "error: GPL license file present; only LICENSE-APACHE belongs in this fork" >&2
+    exit 1
+fi
+
+# Pinned: upstream's config uses keys that newer cargo-about releases reject.
+CARGO_ABOUT_VERSION="0.8.2"
+if ! cargo about --version 2>/dev/null | grep -q "cargo-about ${CARGO_ABOUT_VERSION}"; then
+    echo "error: need cargo-about ${CARGO_ABOUT_VERSION}; cargo install cargo-about@${CARGO_ABOUT_VERSION} --locked" >&2
+    exit 1
+fi
+cargo about generate --fail -c script/licenses/zed-licenses.toml script/licenses/template.md.hbs > /dev/null
+echo "licenses ok"

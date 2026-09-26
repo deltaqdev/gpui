@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Keep deltaq/changes.toml in step with the Zed PRs it references.
+
+Modes:
+  (default)          Query GitHub for every tracked change and print a report.
+                     `--apply` also writes new statuses/heads to changes.toml.
+                     `--open-prs` also creates fork PRs for Zed PRs that moved.
+  --record ...       Add or update one entry (used by adopt-pr / new-change).
+  --resolve-merged   During a merge, take upstream's version of the files of
+                     every change whose status is merged-upstream, then mark
+                     those changes done. Used by sync-upstream.
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tomllib
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CHANGES = os.path.join(ROOT, "deltaq", "changes.toml")
+UPSTREAM_REPO = "zed-industries/zed"
+MAIN_BRANCH = os.environ.get("MAIN_BRANCH", "gpui")
+FIELDS = ["name", "kind", "zed_pr", "head_sha", "files", "status"]
+
+
+def run(*args, check=True, capture=True):
+    return subprocess.run(args, cwd=ROOT, check=check, capture_output=capture, text=True)
+
+
+def load():
+    with open(CHANGES, "rb") as file:
+        header = []
+    with open(CHANGES) as file:
+        for line in file:
+            if line.startswith("#") or not line.strip():
+                header.append(line.rstrip("\n"))
+            else:
+                break
+    with open(CHANGES, "rb") as file:
+        data = tomllib.load(file)
+    return header, data.get("change", [])
+
+
+def toml_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_value(item) for item in value) + "]"
+    return json.dumps(value)
+
+
+def save(header, changes):
+    lines = list(header)
+    for change in changes:
+        lines.append("")
+        lines.append("[[change]]")
+        for field in FIELDS:
+            lines.append(f"{field} = {toml_value(change[field])}")
+    with open(CHANGES, "w") as file:
+        file.write("\n".join(lines) + "\n")
+
+
+def gh_pr(number):
+    result = run("gh", "api", f"repos/{UPSTREAM_REPO}/pulls/{number}")
+    return json.loads(result.stdout)
+
+
+def record(args, header, changes):
+    entry = {
+        "name": args.name,
+        "kind": args.kind,
+        "zed_pr": args.zed_pr,
+        "head_sha": args.head_sha,
+        "files": json.loads(args.files) if args.files else [],
+        "status": args.status,
+    }
+    for index, existing in enumerate(changes):
+        if existing["name"] == args.name:
+            changes[index] = entry
+            break
+    else:
+        changes.append(entry)
+    save(header, changes)
+    print(f"recorded {args.name}")
+
+
+def resolve_merged(header, changes):
+    resolved = False
+    for change in changes:
+        if change["status"] != "merged-upstream":
+            continue
+        unmerged = set(run("git", "diff", "--name-only", "--diff-filter=U").stdout.split())
+        for path in change["files"]:
+            if path in unmerged:
+                run("git", "checkout", "--theirs", "--", path)
+                run("git", "add", "--", path)
+                print(f"{change['name']}: took upstream {path}")
+        change["status"] = "done"
+        resolved = True
+    if resolved:
+        save(header, changes)
+        run("git", "add", "--", CHANGES)
+
+
+def check(args, header, changes):
+    moved = []
+    for change in changes:
+        if change["status"] != "tracking" or not change["zed_pr"]:
+            continue
+        pr = gh_pr(change["zed_pr"])
+        number = change["zed_pr"]
+        if pr["merged"]:
+            change["status"] = "merged-upstream"
+            print(f"{change['name']}: Zed #{number} merged; next sync-upstream takes upstream's version")
+        elif pr["state"] == "closed":
+            change["status"] = "closed-upstream"
+            print(f"{change['name']}: Zed #{number} closed without merge; keep as own change or drop it")
+        elif pr["head"]["sha"] != change["head_sha"]:
+            print(f"{change['name']}: Zed #{number} moved {change['head_sha'][:10]} -> {pr['head']['sha'][:10]}")
+            moved.append((change, pr))
+        else:
+            print(f"{change['name']}: Zed #{number} unchanged")
+    if args.apply:
+        save(header, changes)
+    if args.open_prs:
+        for change, pr in moved:
+            open_update_pr(change, pr)
+
+
+def open_update_pr(change, pr):
+    number = change["zed_pr"]
+    sha = pr["head"]["sha"]
+    branch = f"update/{change['name']}-{sha[:10]}"
+    if run("git", "rev-parse", "--verify", "--quiet", branch, check=False).returncode == 0:
+        print(f"{branch} already exists")
+        return
+    run("git", "fetch", "upstream", f"pull/{number}/head:change/{change['name']}", check=False)
+    run("git", "checkout", "-q", "-b", branch, MAIN_BRANCH)
+    merge = run("git", "merge", "--no-ff", "--no-commit", f"change/{change['name']}", check=False)
+    run(os.path.join(ROOT, "deltaq", "scripts", "strip"))
+    conflicts = run("git", "diff", "--name-only", "--diff-filter=U").stdout.split()
+    if conflicts:
+        run("git", "merge", "--abort", check=False)
+        run("git", "checkout", "-q", MAIN_BRANCH)
+        run("git", "branch", "-D", branch, check=False)
+        print(f"{change['name']}: update conflicts, adopt manually:\n  " + "\n  ".join(conflicts))
+        return
+    change["head_sha"] = sha
+    header, changes = load()
+    for index, existing in enumerate(changes):
+        if existing["name"] == change["name"]:
+            changes[index] = change
+    save(header, changes)
+    run("git", "add", "-A")
+    run("git", "commit", "-q", "-m", f"Update Zed #{number} to {sha[:10]}", "-m", pr["html_url"])
+    run("git", "push", "-u", "origin", branch)
+    run(
+        "gh", "pr", "create", "--base", MAIN_BRANCH, "--head", branch,
+        "--title", f"Update Zed #{number}: {pr['title']}",
+        "--body", f"Follows {pr['html_url']} to {sha}.\n\nOpened by deltaq/scripts/track-changes.",
+    )
+    run("git", "checkout", "-q", MAIN_BRANCH)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--open-prs", action="store_true")
+    parser.add_argument("--resolve-merged", action="store_true")
+    parser.add_argument("--record", action="store_true")
+    parser.add_argument("--name")
+    parser.add_argument("--kind", choices=["upstream-pr", "own"])
+    parser.add_argument("--zed-pr", type=int, default=0)
+    parser.add_argument("--head-sha", default="")
+    parser.add_argument("--files", default="[]")
+    parser.add_argument("--status", default="tracking")
+    args = parser.parse_args()
+
+    header, changes = load()
+    if args.record:
+        if not args.name or not args.kind:
+            parser.error("--record needs --name and --kind")
+        record(args, header, changes)
+    elif args.resolve_merged:
+        resolve_merged(header, changes)
+    else:
+        check(args, header, changes)
+
+
+if __name__ == "__main__":
+    main()

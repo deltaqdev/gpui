@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# One-screen view of how far this fork drifted from Zed and what it carries.
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+cd "$ROOT"
+
+ensure_upstream_remote
+git fetch -q upstream main
+behind="$(git rev-list --count "${MAIN_BRANCH}..upstream/main")"
+last_sync="$(git log -1 --format='%cs %s' --grep='^Sync upstream' "$MAIN_BRANCH" || true)"
+echo "upstream/main : $(git rev-parse --short upstream/main)  ($behind commits not yet synced)"
+echo "last sync     : ${last_sync:-never}"
+echo
+echo "changes (deltaq/changes.toml):"
+python3 - <<'PY'
+import tomllib
+with open("deltaq/changes.toml", "rb") as file:
+    changes = tomllib.load(file).get("change", [])
+if not changes:
+    print("  none")
+for change in changes:
+    pr = f"zed#{change['zed_pr']}" if change["zed_pr"] else "no zed PR"
+    print(f"  {change['name']:24} {change['kind']:12} {change['status']:16} {pr}")
+PY

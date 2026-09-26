@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Replay an own change onto upstream main and open a Zed PR for it.
+#
+#   deltaq/scripts/prepare-upstream-pr <name> [--draft]
+#
+# Needs a remote for your personal fork of Zed (default name: zedfork, override
+# with ZED_FORK_REMOTE). Cherry-picks the commits of change/<name> that are not
+# on `gpui` onto a fresh branch from upstream/main, so the Zed PR carries only
+# the change and none of this fork's stripping.
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+cd "$ROOT"
+
+name="${1:?usage: prepare-upstream-pr <name> [--draft]}"
+shift || true
+require_clean_tree
+ensure_upstream_remote
+if ! git remote get-url "$ZED_FORK_REMOTE" >/dev/null 2>&1; then
+    echo "error: remote '$ZED_FORK_REMOTE' missing; git remote add $ZED_FORK_REMOTE <your zed fork url>" >&2
+    exit 1
+fi
+git fetch upstream main
+
+base="$(git merge-base "$MAIN_BRANCH" "change/${name}")"
+commits="$(git rev-list --reverse --no-merges "${base}..change/${name}" -- ':!deltaq/changes.toml')"
+if [[ -z "$commits" ]]; then
+    echo "error: change/${name} has no commits beyond $MAIN_BRANCH" >&2
+    exit 1
+fi
+
+branch="to-zed/${name}"
+git checkout -q -b "$branch" upstream/main
+# shellcheck disable=SC2086
+git cherry-pick $commits
+git push -u "$ZED_FORK_REMOTE" "$branch"
+
+fork_owner="$(git remote get-url "$ZED_FORK_REMOTE" | sed -E 's#.*[:/]([^/]+)/[^/]+(\.git)?$#\1#')"
+pr_url="$(gh pr create -R "$UPSTREAM_REPO" --head "${fork_owner}:${branch}" --fill "$@")"
+number="${pr_url##*/}"
+head_sha="$(git rev-parse HEAD)"
+files="$(git diff --name-only upstream/main HEAD | jq -R . | jq -sc .)"
+
+git checkout -q "change/${name}"
+deltaq/scripts/track-changes --record --name "$name" --kind own \
+    --zed-pr "$number" --head-sha "$head_sha" --files "$files"
+git add deltaq/changes.toml
+git commit -q -m "Track Zed PR #${number} for change ${name}"
+echo "opened ${pr_url}; recorded in deltaq/changes.toml"

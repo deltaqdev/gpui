@@ -1,0 +1,13 @@
+# Every change this fork carries on top of upstream zed-industries/zed.
+#
+# Managed by deltaq/scripts/{adopt-pr,track-changes,prepare-upstream-pr}.
+# Edit by hand only to fix a mistake. Field reference:
+#
+# [[change]]
+# name = "pr-12345"            # branch is change/<name>
+# kind = "upstream-pr"         # "upstream-pr": someone else's Zed PR we adopted early
+#                              # "own": a DeltaQ change, PRed back to Zed when ready
+# zed_pr = 12345               # Zed PR number, 0 while an own change has no PR yet
+# head_sha = "abc..."          # Zed PR head (or own branch head) merged into `gpui` so far
+# files = ["crates/gpui/src/window.rs"]   # paths touched, used to auto-resolve conflicts
+# status = "tracking"          # tracking | merged-upstream | closed-upstream | done

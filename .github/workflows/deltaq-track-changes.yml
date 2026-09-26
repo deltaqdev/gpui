@@ -1,0 +1,38 @@
+# Daily: follow every Zed PR listed in deltaq/changes.toml. Opens fork PRs for
+# PR heads that moved and records merged/closed states.
+name: Track changes
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.DELTAQ_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: gpui
+          token: ${{ secrets.DELTAQ_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+      - run: |
+          git config user.name "deltaq-bot"
+          git config user.email "bot@deltaq.dev"
+          git remote add upstream https://github.com/zed-industries/zed
+      - run: deltaq/scripts/track-changes --apply --open-prs
+      - name: Record status changes
+        run: |
+          git checkout -q gpui
+          if git diff --quiet -- deltaq/changes.toml; then exit 0; fi
+          branch="chore/track-changes-$(date +%Y%m%d)"
+          git checkout -q -b "$branch"
+          git commit -am "Record upstream state of tracked changes"
+          git push -u origin "$branch"
+          gh pr create --base gpui --head "$branch" --fill

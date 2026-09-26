@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Remove every tracked path not covered by deltaq/keep.txt.
+
+Used once for the initial trim and again after every upstream merge, so the
+set of kept paths lives in exactly one place.
+"""
+import os
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+KEEP_FILE = os.path.join(ROOT, "deltaq", "keep.txt")
+
+
+def load_keep():
+    prefixes = []
+    with open(KEEP_FILE) as file:
+        for line in file:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                prefixes.append(line)
+    return prefixes
+
+
+def is_kept(path, prefixes):
+    for prefix in prefixes:
+        if prefix.endswith("/"):
+            if path.startswith(prefix):
+                return True
+        elif path == prefix:
+            return True
+    return False
+
+
+def main():
+    dry_run = "--dry-run" in sys.argv
+    prefixes = load_keep()
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True
+    ).stdout.decode().split("\0")
+    doomed = [path for path in tracked if path and not is_kept(path, prefixes)]
+    if not doomed:
+        print("nothing to strip")
+        return
+    print(f"stripping {len(doomed)} paths", file=sys.stderr)
+    if dry_run:
+        print("\n".join(doomed))
+        return
+    chunk = 2000
+    for start in range(0, len(doomed), chunk):
+        subprocess.run(
+            ["git", "rm", "-q", "-r", "-f", "--"] + doomed[start : start + chunk],
+            cwd=ROOT,
+            check=True,
+        )
+    # git rm leaves empty directories behind
+    for directory, subdirectories, files in os.walk(ROOT, topdown=False):
+        if ".git" in directory.split(os.sep):
+            continue
+        if not subdirectories and not files and directory != ROOT:
+            os.rmdir(directory)
+
+
+if __name__ == "__main__":
+    main()

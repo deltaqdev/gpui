@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Merge upstream zed-industries/zed main into a new branch off `gpui` and
+# resolve everything that is mechanical:
+#
+#   1. paths outside deltaq/keep.txt        -> removed (covers modify/delete conflicts)
+#   2. README.md, .rules and symlinks       -> ours
+#   3. Cargo.toml / Cargo.lock              -> upstream's, filtered to present crates
+#   4. files of changes Zed already merged  -> upstream's (same diff, squash-merged)
+#
+# Anything still conflicted is a real conflict in a kept crate and is left for
+# a human. The script exits 2 in that case, with the merge in progress.
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+cd "$ROOT"
+
+require_clean_tree
+ensure_upstream_remote
+git fetch upstream main
+
+upstream_sha="$(git rev-parse --short upstream/main)"
+branch="sync/upstream-${upstream_sha}"
+if git rev-parse --verify --quiet "$branch" >/dev/null; then
+    echo "error: branch $branch already exists" >&2
+    exit 1
+fi
+if git merge-base --is-ancestor upstream/main "$MAIN_BRANCH"; then
+    echo "already up to date with upstream/main ($upstream_sha)"
+    exit 0
+fi
+
+git checkout -q -b "$branch" "$MAIN_BRANCH"
+git merge --no-commit --no-ff upstream/main >/dev/null 2>&1 || true
+
+# 1. strip paths we do not keep, including anything upstream added since
+deltaq/scripts/strip
+
+# 2. files this fork owns outright
+for owned in README.md .rules CLAUDE.md AGENTS.md; do
+    git checkout "$MAIN_BRANCH" -- "$owned"
+done
+
+# 3. root manifest and lockfile: regenerate from upstream's copies
+upstream_manifest="$(mktemp)"
+git show upstream/main:Cargo.toml > "$upstream_manifest"
+git show upstream/main:Cargo.lock > Cargo.lock
+regenerate_workspace "$upstream_manifest"
+rm -f "$upstream_manifest"
+git add Cargo.toml Cargo.lock
+
+# 4. changes Zed merged since the last sync: upstream wins on their files
+deltaq/scripts/track-changes --resolve-merged
+
+remaining="$(git diff --name-only --diff-filter=U)"
+if [[ -n "$remaining" ]]; then
+    echo "manual conflicts remain in kept crates:" >&2
+    echo "$remaining" >&2
+    echo "resolve, then: git add -A && git commit -m 'Sync upstream zed@${upstream_sha}'" >&2
+    exit 2
+fi
+
+git commit -q -m "Sync upstream zed@${upstream_sha}" -m "Merged ${UPSTREAM_URL}/commit/$(git rev-parse upstream/main)"
+echo "created $branch; open a PR against $MAIN_BRANCH"

@@ -1,0 +1,20 @@
+[book]
+title = "GPUI at DeltaQ"
+description = "How DeltaQ developers build on GPUI, and how this fork tracks Zed"
+authors = ["DeltaQ"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+site-url = "/"
+git-repository-url = "https://github.com/deltaqdev/gpui"
+edit-url-template = "https://github.com/deltaqdev/gpui/edit/gpui/site/{path}"
+default-theme = "light"
+preferred-dark-theme = "navy"
+
+[output.html.fold]
+enable = true
+level = 1

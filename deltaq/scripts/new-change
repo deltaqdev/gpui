@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Start an own change: a branch off `gpui` that is meant to go back to Zed.
+#
+#   deltaq/scripts/new-change <name>
+#
+# Work on change/<name>, open a PR against `gpui` when ready, and run
+# prepare-upstream-pr <name> to send the same commits to Zed.
+
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+cd "$ROOT"
+
+name="${1:?usage: new-change <name>}"
+require_clean_tree
+git checkout -q -b "change/${name}" "$MAIN_BRANCH"
+deltaq/scripts/track-changes --record --name "$name" --kind own --status tracking
+git add deltaq/changes.toml
+git commit -q -m "Start change ${name}"
+echo "on change/${name}; commit your work here"

@@ -1,0 +1,90 @@
+# Fork-owned CI. Upstream's generated workflows are not kept; see deltaq/keep.txt.
+name: CI
+
+on:
+  push:
+    branches: [gpui]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  style:
+    name: Style and fork invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all --check
+      - name: keep.txt covers every tracked path
+        run: |
+          if ! deltaq/scripts/strip --dry-run 2>/dev/null | grep -q '^nothing to strip$'; then
+            echo "paths outside deltaq/keep.txt are tracked:" >&2
+            deltaq/scripts/strip --dry-run >&2
+            exit 1
+          fi
+      - name: Cargo.toml is a fixed point of filter-workspace
+        run: deltaq/scripts/filter-workspace Cargo.toml | diff - Cargo.toml
+
+  clippy_and_test:
+    name: Clippy and tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc g++ make cmake clang lld llvm build-essential \
+            libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev \
+            libvulkan1 libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev \
+            libstdc++-14-dev pkg-config
+      - name: Deny warnings without overriding .cargo/config.toml rustflags
+        shell: bash
+        run: |
+          mkdir -p ../.cargo
+          printf "[target.'cfg(all())']\nrustflags = [\"-D\", \"warnings\"]\n" > ../.cargo/config.toml
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        shell: bash
+        run: cargo clippy --workspace --release --all-targets --all-features -- --deny warnings
+      - name: Tests
+        shell: bash
+        run: cargo test --workspace --no-fail-fast
+      - if: always()
+        shell: bash
+        run: rm -rf ../.cargo
+
+  wasm:
+    name: Check wasm32 (gpui_platform)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install nightly --component rust-src --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo -Zbuild-std=std,panic_abort check --target wasm32-unknown-unknown -p gpui_platform
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS: -C target-feature=+atomics,+bulk-memory,+mutable-globals
+          RUSTC_BOOTSTRAP: "1"
+
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo install cargo-about@0.8.2 --locked
+      - run: deltaq/scripts/check-licenses
