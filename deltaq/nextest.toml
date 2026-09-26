@@ -2,7 +2,11 @@
 # crates this fork strips, which nextest rejects as a config error.
 [profile.default]
 slow-timeout = { period = "60s", terminate-after = 1 }
-# bench_context tests assert on wall-clock sleep durations, which GitHub's
-# macOS runners do not keep precise enough; upstream runs them on faster
-# dedicated machines. They cover benchmark harness code only.
-default-filter = 'not (package(gpui) and test(/^app::bench_context::/))'
+# These tests assert on wall-clock durations tuned for upstream's dedicated CI
+# machines and fail intermittently on GitHub's hosted runners:
+# - gpui bench_context: sleep durations on macOS (a 10ms poll measured as 89ms).
+# - util process::windows_tests: a 5s PowerShell cold-start deadline on Windows.
+default-filter = '''
+not (package(gpui) and test(/^app::bench_context::/))
+and not (package(util) and test(/^process::windows_tests::/))
+'''
