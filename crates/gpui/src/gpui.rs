@@ -18,6 +18,7 @@ mod color;
 pub mod colors;
 #[cfg(feature = "profiler")]
 mod debug_overlay;
+mod composition;
 mod element;
 mod elements;
 mod executor;
@@ -96,6 +97,7 @@ pub(crate) use arena::*;
 pub use asset_cache::*;
 pub use assets::*;
 pub use color::*;
+pub use composition::*;
 pub use ctor::ctor;
 #[cfg(feature = "profiler")]
 pub use debug_overlay::*;
