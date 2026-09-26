@@ -51,34 +51,34 @@ edition = "2024"
 # Workspace member crates
 #
 
-collections = { path = "crates/collections", version = "0.1.0" }
-derive_refineable = { path = "crates/refineable/derive_refineable" }
-gpui = { path = "crates/gpui", default-features = false }
-gpui_apple = { path = "crates/gpui_apple" }
-gpui_linux = { path = "crates/gpui_linux", default-features = false }
-gpui_macos = { path = "crates/gpui_macos", default-features = false }
-gpui_macros = { path = "crates/gpui_macros" }
-gpui_platform = { path = "crates/gpui_platform", default-features = false }
-gpui_shared_string = { path = "crates/gpui_shared_string" }
+collections = { package = "gpui-pre-collections", path = "crates/collections", version = "0.3.6" }
+derive_refineable = { package = "gpui-pre-derive-refineable", path = "crates/refineable/derive_refineable" }
+gpui = { package = "gpui-pre", path = "crates/gpui", default-features = false }
+gpui_apple = { package = "gpui-pre-apple", path = "crates/gpui_apple" }
+gpui_linux = { package = "gpui-pre-linux", path = "crates/gpui_linux", default-features = false }
+gpui_macos = { package = "gpui-pre-macos", path = "crates/gpui_macos", default-features = false }
+gpui_macros = { package = "gpui-pre-macros", path = "crates/gpui_macros" }
+gpui_platform = { package = "gpui-pre-platform", path = "crates/gpui_platform", default-features = false }
+gpui_shared_string = { package = "gpui-pre-shared-string", path = "crates/gpui_shared_string" }
 gpui_tokio = { path = "crates/gpui_tokio" }
-gpui_util = { path = "crates/gpui_util" }
-gpui_web = { path = "crates/gpui_web" }
-gpui_wgpu = { path = "crates/gpui_wgpu" }
-gpui_windows = { path = "crates/gpui_windows", default-features = false }
-http_client = { path = "crates/http_client" }
-http_client_tls = { path = "crates/http_client_tls" }
+gpui_util = { package = "gpui-pre-util", path = "crates/gpui_util" }
+gpui_web = { package = "gpui-pre-web", path = "crates/gpui_web" }
+gpui_wgpu = { package = "gpui-pre-wgpu", path = "crates/gpui_wgpu" }
+gpui_windows = { package = "gpui-pre-windows", path = "crates/gpui_windows", default-features = false }
+http_client = { package = "gpui-pre-http-client", path = "crates/http_client" }
+http_client_tls = { package = "gpui-pre-http-client-tls", path = "crates/http_client_tls" }
 path = { path = "crates/path" }
-perf = { path = "tooling/perf" }
-refineable = { path = "crates/refineable" }
-reqwest_client = { path = "crates/reqwest_client" }
+perf = { package = "gpui-pre-perf", path = "tooling/perf" }
+refineable = { package = "gpui-pre-refineable", path = "crates/refineable" }
+reqwest_client = { package = "gpui-pre-reqwest-client", path = "crates/reqwest_client" }
 rodio = { git = "https://github.com/RustAudio/rodio", rev = "e50e726ddd0292f6ef9de0dda6b90af4ed1fb66a", default-features = false, features = ["wav", "playback", "wav_output", "recording", "dither"] }
-scheduler = { path = "crates/scheduler" }
-sum_tree = { path = "crates/sum_tree" }
+scheduler = { package = "gpui-pre-scheduler", path = "crates/scheduler" }
+sum_tree = { package = "gpui-pre-sum-tree", path = "crates/sum_tree" }
 util = { path = "crates/util" }
-util_macros = { path = "crates/util_macros" }
-zlog = { path = "crates/zlog" }
-ztracing = { path = "crates/ztracing" }
-ztracing_macro = { path = "crates/ztracing_macro" }
+util_macros = { package = "gpui-pre-util-macros", path = "crates/util_macros" }
+zlog = { package = "gpui-pre-zlog", path = "crates/zlog" }
+ztracing = { package = "gpui-pre-ztracing", path = "crates/ztracing" }
+ztracing_macro = { package = "gpui-pre-ztracing-macro", path = "crates/ztracing_macro" }
 
 #
 # External crates
@@ -362,7 +362,7 @@ raw-window-handle = "0.6"
 rayon = "1.8"
 regex = "1.5"
 # WARNING: If you change this, you must also publish a new version of zed-reqwest to crates.io
-reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "33bc764aa15ff7b200bf7c93bd96e24878d53e14", default-features = false, features = [
+reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
     "charset",
     "http2",
     "macos-system-configuration",
@@ -370,7 +370,7 @@ reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "33bc76
     "rustls-tls-native-roots",
     "socks",
     "stream",
-], package = "zed-reqwest", version = "0.12.15-zed" }
+] }
 resvg = { version = "0.46.0", default-features = false, features = [
     "text",
     "system-fonts",
@@ -609,9 +609,9 @@ debug = "full"
 
 [profile.dev.package]
 # proc-macros start
-gpui_macros = { opt-level = 3 }
-derive_refineable = { opt-level = 3 }
-util_macros = { opt-level = 3 }
+gpui-pre-macros = { opt-level = 3 }
+gpui-pre-derive-refineable = { opt-level = 3 }
+gpui-pre-util-macros = { opt-level = 3 }
 quote = { opt-level = 3 }
 syn = { opt-level = 3 }
 proc-macro2 = { opt-level = 3 }
@@ -621,9 +621,9 @@ taffy = { opt-level = 3 }
 resvg = { opt-level = 3 }
 serde_json = { opt-level = 3 }
 # Build single-source-file crates with cg=1 as it helps make `cargo build` of a whole workspace a bit faster
-collections = { codegen-units = 1 }
-refineable = { codegen-units = 1 }
-reqwest_client = { codegen-units = 1 }
+gpui-pre-collections = { codegen-units = 1 }
+gpui-pre-refineable = { codegen-units = 1 }
+gpui-pre-reqwest-client = { codegen-units = 1 }
 
 [profile.release]
 debug = "limited"

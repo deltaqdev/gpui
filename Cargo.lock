@@ -1201,15 +1201,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "collections"
-version = "0.1.0"
-dependencies = [
- "gpui_util",
- "indexmap",
- "rustc-hash 2.1.1",
-]
-
-[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1667,15 +1658,6 @@ dependencies = [
  "rustc_version",
  "syn 2.0.117",
  "unicode-xid",
-]
-
-[[package]]
-name = "derive_refineable"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -2520,8 +2502,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui"
-version = "0.2.2"
+name = "gpui-pre"
+version = "0.3.6"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -2532,7 +2514,6 @@ dependencies = [
  "bitflags 2.13.1",
  "chrono",
  "cocoa 0.26.0",
- "collections",
  "core-video",
  "criterion",
  "ctor",
@@ -2543,13 +2524,19 @@ dependencies = [
  "futures",
  "futures-concurrency",
  "getrandom 0.3.4",
- "gpui_macros",
- "gpui_platform",
- "gpui_shared_string",
- "gpui_util",
+ "gpui-pre-collections",
+ "gpui-pre-http-client",
+ "gpui-pre-macros",
+ "gpui-pre-platform",
+ "gpui-pre-refineable",
+ "gpui-pre-reqwest-client",
+ "gpui-pre-scheduler",
+ "gpui-pre-shared-string",
+ "gpui-pre-sum-tree",
+ "gpui-pre-util",
+ "gpui-pre-util-macros",
  "hdrhistogram",
  "heapless",
- "http_client",
  "image",
  "inventory",
  "itertools 0.14.0",
@@ -2570,11 +2557,8 @@ dependencies = [
  "proptest",
  "rand 0.9.4",
  "raw-window-handle",
- "refineable",
  "regex",
- "reqwest_client",
  "resvg",
- "scheduler",
  "schemars",
  "seahash",
  "serde",
@@ -2584,14 +2568,12 @@ dependencies = [
  "spin 0.10.0",
  "stacksafe",
  "strum",
- "sum_tree",
  "taffy",
  "thiserror 2.0.17",
  "ttf-parser",
  "unicode-segmentation",
  "url",
  "usvg",
- "util_macros",
  "uuid",
  "waker-fn",
  "wasm-bindgen",
@@ -2604,8 +2586,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_apple"
-version = "0.1.0"
+name = "gpui-pre-apple"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -2616,7 +2598,7 @@ dependencies = [
  "derive_more",
  "etagere",
  "foreign-types",
- "gpui",
+ "gpui-pre",
  "image",
  "log",
  "metal",
@@ -2626,8 +2608,61 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_linux"
-version = "0.1.0"
+name = "gpui-pre-collections"
+version = "0.3.6"
+dependencies = [
+ "gpui-pre-util",
+ "indexmap",
+ "rustc-hash 2.1.1",
+]
+
+[[package]]
+name = "gpui-pre-derive-refineable"
+version = "0.3.6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "gpui-pre-http-client"
+version = "0.3.6"
+dependencies = [
+ "anyhow",
+ "async-compression",
+ "async-fs",
+ "async-std",
+ "async-tar",
+ "bytes",
+ "derive_more",
+ "futures",
+ "http",
+ "http-body",
+ "log",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sha2",
+ "tempfile",
+ "url",
+ "util",
+]
+
+[[package]]
+name = "gpui-pre-http-client-tls"
+version = "0.3.6"
+dependencies = [
+ "log",
+ "rustls",
+ "rustls-platform-verifier",
+ "webpki-roots",
+]
+
+[[package]]
+name = "gpui-pre-linux"
+version = "0.3.6"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -2638,13 +2673,13 @@ dependencies = [
  "bytemuck",
  "calloop",
  "calloop-wayland-source",
- "collections",
  "filedescriptor",
  "futures",
- "gpui",
- "gpui_util",
- "gpui_wgpu",
- "http_client",
+ "gpui-pre",
+ "gpui-pre-collections",
+ "gpui-pre-http-client",
+ "gpui-pre-util",
+ "gpui-pre-wgpu",
  "libc",
  "log",
  "notify-rust",
@@ -2671,8 +2706,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_macos"
-version = "0.1.0"
+name = "gpui-pre-macos"
+version = "0.3.6"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -2680,7 +2715,6 @@ dependencies = [
  "async-task",
  "block2 0.6.2",
  "cocoa 0.26.0",
- "collections",
  "core-foundation 0.10.0",
  "core-foundation-sys",
  "core-graphics 0.24.0",
@@ -2689,9 +2723,10 @@ dependencies = [
  "dispatch2",
  "foreign-types",
  "futures",
- "gpui",
- "gpui_apple",
- "gpui_util",
+ "gpui-pre",
+ "gpui-pre-apple",
+ "gpui-pre-collections",
+ "gpui-pre-util",
  "image",
  "itertools 0.14.0",
  "libc",
@@ -2716,10 +2751,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_macros"
-version = "0.1.0"
+name = "gpui-pre-macros"
+version = "0.3.6"
 dependencies = [
- "gpui",
+ "gpui-pre",
  "heck 0.5.0",
  "proc-macro2",
  "quote",
@@ -2727,23 +2762,120 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_platform"
-version = "0.1.0"
+name = "gpui-pre-perf"
+version = "0.3.6"
+dependencies = [
+ "gpui-pre-collections",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "gpui-pre-platform"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
  "criterion",
- "gpui",
- "gpui_linux",
- "gpui_macos",
- "gpui_web",
- "gpui_wgpu",
- "gpui_windows",
+ "gpui-pre",
+ "gpui-pre-linux",
+ "gpui-pre-macos",
+ "gpui-pre-web",
+ "gpui-pre-wgpu",
+ "gpui-pre-windows",
 ]
 
 [[package]]
-name = "gpui_shared_string"
-version = "0.1.0"
+name = "gpui-pre-refineable"
+version = "0.3.6"
+dependencies = [
+ "gpui-pre-derive-refineable",
+]
+
+[[package]]
+name = "gpui-pre-reqwest"
+version = "0.12.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05be23908e707966824f8c51a609904b7f30739e8d915e120a53c1b995ba964c"
+dependencies = [
+ "base64",
+ "bytes",
+ "encoding_rs",
+ "futures-core",
+ "futures-util",
+ "h2",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "ipnet",
+ "js-sys",
+ "log",
+ "mime",
+ "mime_guess",
+ "once_cell",
+ "percent-encoding",
+ "pin-project-lite",
+ "quinn",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pemfile",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper",
+ "system-configuration",
+ "tokio",
+ "tokio-rustls",
+ "tokio-socks",
+ "tokio-util",
+ "tower",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-streams",
+ "web-sys",
+ "windows-registry 0.4.0",
+]
+
+[[package]]
+name = "gpui-pre-reqwest-client"
+version = "0.3.6"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "futures",
+ "gpui-pre-http-client",
+ "gpui-pre-http-client-tls",
+ "gpui-pre-reqwest",
+ "gpui-pre-util",
+ "log",
+ "regex",
+ "tokio",
+]
+
+[[package]]
+name = "gpui-pre-scheduler"
+version = "0.3.6"
+dependencies = [
+ "async-task",
+ "backtrace",
+ "chrono",
+ "flume",
+ "futures",
+ "parking_lot",
+ "rand 0.9.4",
+ "wasm_thread",
+ "web-time",
+]
+
+[[package]]
+name = "gpui-pre-shared-string"
+version = "0.3.6"
 dependencies = [
  "schemars",
  "serde",
@@ -2751,18 +2883,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_tokio"
-version = "0.1.0"
+name = "gpui-pre-sum-tree"
+version = "0.3.6"
 dependencies = [
- "anyhow",
- "gpui",
- "gpui_util",
- "tokio",
+ "ctor",
+ "gpui-pre-zlog",
+ "gpui-pre-ztracing",
+ "heapless",
+ "log",
+ "proptest",
+ "rand 0.9.4",
+ "rayon",
+ "tracing",
 ]
 
 [[package]]
-name = "gpui_util"
-version = "0.1.0"
+name = "gpui-pre-util"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "log",
@@ -2770,20 +2907,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_web"
-version = "0.1.0"
+name = "gpui-pre-util-macros"
+version = "0.3.6"
+dependencies = [
+ "gpui-pre-perf",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "gpui-pre-web"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
  "futures",
- "gpui",
- "gpui_wgpu",
- "http_client",
+ "gpui-pre",
+ "gpui-pre-http-client",
+ "gpui-pre-scheduler",
+ "gpui-pre-wgpu",
  "js-sys",
  "log",
  "parking_lot",
  "raw-window-handle",
- "scheduler",
  "smallvec",
  "unicode-properties",
  "unicode-script",
@@ -2797,17 +2943,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_wgpu"
-version = "0.1.0"
+name = "gpui-pre-wgpu"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "bytemuck",
- "collections",
  "cosmic-text",
  "criterion",
  "etagere",
- "gpui",
- "gpui_util",
+ "gpui-pre",
+ "gpui-pre-collections",
+ "gpui-pre-util",
  "image",
  "itertools 0.14.0",
  "log",
@@ -2825,18 +2971,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui_windows"
-version = "0.1.0"
+name = "gpui-pre-windows"
+version = "0.3.6"
 dependencies = [
  "accesskit",
  "accesskit_windows",
  "anyhow",
- "collections",
  "dunce",
  "etagere",
  "futures",
- "gpui",
- "gpui_util",
+ "gpui-pre",
+ "gpui-pre-collections",
+ "gpui-pre-util",
  "image",
  "itertools 0.14.0",
  "log",
@@ -2850,6 +2996,47 @@ dependencies = [
  "windows-numerics 0.3.1",
  "windows-registry 0.6.1",
  "zed-scap",
+]
+
+[[package]]
+name = "gpui-pre-zlog"
+version = "0.3.6"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "gpui-pre-collections",
+ "log",
+ "tempfile",
+]
+
+[[package]]
+name = "gpui-pre-ztracing"
+version = "0.3.6"
+dependencies = [
+ "async-channel 2.5.0",
+ "gpui-pre-zlog",
+ "gpui-pre-ztracing-macro",
+ "js-sys",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-tracy",
+ "tracy-client",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "gpui-pre-ztracing-macro"
+version = "0.3.6"
+
+[[package]]
+name = "gpui_tokio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui-pre",
+ "gpui-pre-util",
+ "tokio",
 ]
 
 [[package]]
@@ -3037,41 +3224,6 @@ dependencies = [
  "http",
  "http-body",
  "pin-project-lite",
-]
-
-[[package]]
-name = "http_client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-compression",
- "async-fs",
- "async-std",
- "async-tar",
- "bytes",
- "derive_more",
- "futures",
- "http",
- "http-body",
- "log",
- "parking_lot",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sha2",
- "tempfile",
- "url",
- "util",
-]
-
-[[package]]
-name = "http_client_tls"
-version = "0.1.0"
-dependencies = [
- "log",
- "rustls",
- "rustls-platform-verifier",
- "webpki-roots",
 ]
 
 [[package]]
@@ -4770,15 +4922,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "perf"
-version = "0.1.0"
-dependencies = [
- "collections",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "phf"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5540,13 +5683,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "refineable"
-version = "0.1.0"
-dependencies = [
- "derive_refineable",
-]
-
-[[package]]
 name = "regex"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5580,22 +5716,6 @@ name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
-
-[[package]]
-name = "reqwest_client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "futures",
- "gpui_util",
- "http_client",
- "http_client_tls",
- "log",
- "regex",
- "tokio",
- "zed-reqwest",
-]
 
 [[package]]
 name = "resvg"
@@ -5878,21 +5998,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "891d81b926048e76efe18581bf793546b4c0eaf8448d72be8de2bbee5fd166e1"
 dependencies = [
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "scheduler"
-version = "0.1.0"
-dependencies = [
- "async-task",
- "backtrace",
- "chrono",
- "flume",
- "futures",
- "parking_lot",
- "rand 0.9.4",
- "wasm_thread",
- "web-time",
 ]
 
 [[package]]
@@ -6416,21 +6521,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "sum_tree"
-version = "0.1.0"
-dependencies = [
- "ctor",
- "heapless",
- "log",
- "proptest",
- "rand 0.9.4",
- "rayon",
- "tracing",
- "zlog",
- "ztracing",
-]
-
-[[package]]
 name = "sval"
 version = "2.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6602,12 +6692,12 @@ dependencies = [
 
 [[package]]
 name = "system-configuration"
-version = "0.8.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "501336eb7ba9e417300a6a0fa985721065467aa83a6dcf0422a8e43e4c0328fa"
+checksum = "3c879d448e9d986b661742763247d3693ed13609438cf3d006f51f5368a5ba6b"
 dependencies = [
  "bitflags 2.13.1",
- "core-foundation 0.10.0",
+ "core-foundation 0.9.4",
  "system-configuration-sys",
 ]
 
@@ -7287,14 +7377,15 @@ dependencies = [
  "anyhow",
  "async-fs",
  "async_zip",
- "collections",
  "command-fds",
  "dirs",
  "dunce",
  "futures",
  "futures-lite",
  "globset",
- "gpui_util",
+ "gpui-pre-collections",
+ "gpui-pre-util",
+ "gpui-pre-util-macros",
  "itertools 0.14.0",
  "libc",
  "log",
@@ -7316,19 +7407,9 @@ dependencies = [
  "tendril",
  "unicase",
  "url",
- "util_macros",
  "walkdir",
  "which",
  "windows 0.62.2",
-]
-
-[[package]]
-name = "util_macros"
-version = "0.1.0"
-dependencies = [
- "perf",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -8885,55 +8966,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zed-reqwest"
-version = "0.12.15-zed"
-source = "git+https://github.com/zed-industries/reqwest.git?rev=33bc764aa15ff7b200bf7c93bd96e24878d53e14#33bc764aa15ff7b200bf7c93bd96e24878d53e14"
-dependencies = [
- "base64",
- "bytes",
- "encoding_rs",
- "futures-core",
- "futures-util",
- "h2",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
- "ipnet",
- "js-sys",
- "log",
- "mime",
- "mime_guess",
- "once_cell",
- "percent-encoding",
- "pin-project-lite",
- "quinn",
- "rustls",
- "rustls-native-certs",
- "rustls-pemfile",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sync_wrapper",
- "system-configuration",
- "tokio",
- "tokio-rustls",
- "tokio-socks",
- "tokio-util",
- "tower",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams",
- "web-sys",
- "windows-registry 0.4.0",
-]
-
-[[package]]
 name = "zed-scap"
 version = "0.0.8-zed"
 source = "git+https://github.com/zed-industries/scap?rev=4afea48c3b002197176fb19cd0f9b180dd36eaac#4afea48c3b002197176fb19cd0f9b180dd36eaac"
@@ -9068,17 +9100,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zlog"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "collections",
- "log",
- "tempfile",
-]
-
-[[package]]
 name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9111,26 +9132,6 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[package]]
-name = "ztracing"
-version = "0.1.0"
-dependencies = [
- "async-channel 2.5.0",
- "js-sys",
- "tracing",
- "tracing-subscriber",
- "tracing-tracy",
- "tracy-client",
- "wasm-bindgen",
- "web-sys",
- "zlog",
- "ztracing_macro",
-]
-
-[[package]]
-name = "ztracing_macro"
-version = "0.1.0"
 
 [[package]]
 name = "zune-core"
