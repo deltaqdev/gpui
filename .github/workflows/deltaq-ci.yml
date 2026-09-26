@@ -64,7 +64,7 @@ jobs:
         run: cargo clippy --workspace --release --all-targets --all-features -- --deny warnings
       - name: Tests
         shell: bash
-        run: cargo nextest run --workspace --no-fail-fast --no-tests=warn
+        run: cargo nextest run --workspace --no-fail-fast --no-tests=warn --config-file deltaq/nextest.toml
       - if: always()
         shell: bash
         run: rm -rf ../.cargo
