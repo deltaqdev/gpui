@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""Keep the gpui-pre branch: gpui with its crates renamed to `gpui-pre-*`.
+
+gpui-kit's crates (gpui-base, gpui-wry) depend on `gpui-pre = "=VERSION"` and
+friends from crates.io. An app patches those names onto this branch with
+`[patch.crates-io]`, which only works when the package names and version
+match exactly, so this renames every crate gpui needs in place:
+
+  * `[package] name` becomes `gpui-pre-*` (the names gpui-kit publishes under)
+    and `version` becomes VERSION
+  * `[lib] name` keeps the original name, so `use gpui::*` still works
+  * path dependencies on a renamed crate gain `package = "gpui-pre-*"`, so
+    every `gpui.workspace = true` keeps resolving
+  * `[profile.*.package]` overrides follow the rename
+  * the workspace `reqwest` (Zed's fork, from git) becomes crates.io's
+    `gpui-pre-reqwest`, the same fork published under the version gpui-kit
+    uses, so an app builds one reqwest rather than two
+
+Usage: deltaq/scripts/stage-gpui-pre [REV]
+
+Run on the gpui-pre branch. Merges REV (default: origin/gpui, fetched first)
+into gpui-pre, taking REV's side of any conflict, then reapplies the rename
+and commits. Rerunning with nothing new to merge changes nothing.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import tomllib
+
+# gpui-kit pins `=VERSION`; any other version fails its resolution.
+VERSION = "0.3.6"
+PREFIX = "gpui-pre"
+BRANCH = "gpui-pre"
+ROOT_CRATES = ["gpui", "gpui_platform", "gpui_macros", "reqwest_client", "sum_tree"]
+DEPENDENCY_TABLES = ["dependencies", "build-dependencies"]
+# Must match the `reqwest` requirement in gpui-kit's workspace Cargo.toml.
+REQWEST_PACKAGE = "gpui-pre-reqwest"
+REQWEST_VERSION = "=0.12.15"
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def git(*args, capture=True):
+    result = subprocess.run(
+        ["git", *args], cwd=ROOT, check=True, text=True, capture_output=capture
+    )
+    return result.stdout.strip() if capture else None
+
+
+def die(message):
+    print(f"stage-gpui-pre: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def published_name(crate):
+    if crate == "gpui":
+        return PREFIX
+    return f"{PREFIX}-{crate.removeprefix('gpui_').replace('_', '-')}"
+
+
+def load(path):
+    with open(path, "rb") as file:
+        return tomllib.load(file)
+
+
+def lib_name(manifest):
+    # After a rename the package name is `gpui-pre-*` but `[lib] name` still
+    # holds the original, so this names a crate the same way before and after.
+    return manifest.get("lib", {}).get("name") or manifest["package"]["name"].replace("-", "_")
+
+
+def dependency_keys(manifest):
+    tables = [manifest.get(table, {}) for table in DEPENDENCY_TABLES]
+    for target in manifest.get("target", {}).values():
+        tables += [target.get(table, {}) for table in DEPENDENCY_TABLES]
+    for table in tables:
+        for key, spec in table.items():
+            if isinstance(spec, dict) and not spec.get("optional", False):
+                if spec.get("workspace") or "path" in spec:
+                    yield key
+
+
+def crate_closure():
+    """Map original crate name -> directory for everything the roots need.
+
+    Optional dependencies are left out: they are not built for gpui-kit, and
+    one of them (`util`) would take the name `gpui-pre-util` from `gpui_util`.
+    """
+    root_manifest = load(os.path.join(ROOT, "Cargo.toml"))
+    members = {}
+    for member in root_manifest["workspace"]["members"]:
+        manifest = load(os.path.join(ROOT, member, "Cargo.toml"))
+        members[lib_name(manifest)] = (member, manifest)
+
+    closure = {}
+    pending = list(ROOT_CRATES)
+    while pending:
+        crate = pending.pop()
+        if crate in closure:
+            continue
+        if crate not in members:
+            die(f"`{crate}` is not a workspace member")
+        directory, manifest = members[crate]
+        closure[crate] = directory
+        pending += [key for key in dependency_keys(manifest) if key in members]
+    return closure
+
+
+def rewrite_package_manifest(path, crate):
+    lines = open(path).read().split("\n")
+    section = None
+    has_lib_name = False
+    lib_header = None
+    for index, line in enumerate(lines):
+        header = re.match(r"^\[([^\]]+)\]\s*$", line)
+        if header:
+            section = header.group(1)
+            if section == "lib":
+                lib_header = index
+            continue
+        if section == "package":
+            if re.match(r"^name\s*=", line):
+                lines[index] = f'name = "{published_name(crate)}"'
+            elif re.match(r"^version\s*=", line):
+                lines[index] = f'version = "{VERSION}"'
+        elif section == "lib" and re.match(r"^name\s*=", line):
+            has_lib_name = True
+    if not has_lib_name:
+        if lib_header is None:
+            lines += ["[lib]", f'name = "{crate}"', ""]
+        else:
+            lines.insert(lib_header + 1, f'name = "{crate}"')
+    open(path, "w").write("\n".join(lines))
+
+
+DEPENDENCY_LINE = re.compile(r"^(\s*)([A-Za-z0-9_-]+)(\s*=\s*\{)(.*)$")
+
+
+def rewrite_path_dependencies(path, crate_dirs):
+    """Point path dependencies on a renamed crate at its new package name."""
+    base = os.path.dirname(path)
+    lines = open(path).read().split("\n")
+    in_profile_package = False
+    changed = False
+    for index, line in enumerate(lines):
+        header = re.match(r"^\[([^\]]+)\]\s*$", line)
+        if header:
+            in_profile_package = re.fullmatch(r"profile\.[^.]+\.package", header.group(1)) is not None
+            continue
+        match = DEPENDENCY_LINE.match(line)
+        if not match:
+            continue
+        indent, key, assign, rest = match.groups()
+        if in_profile_package:
+            if key in crate_dirs:
+                lines[index] = f"{indent}{published_name(key)}{assign}{rest}"
+                changed = True
+            continue
+        dependency_path = re.search(r'\bpath\s*=\s*"([^"]+)"', rest)
+        if key not in crate_dirs or dependency_path is None:
+            continue
+        target = os.path.relpath(os.path.normpath(os.path.join(base, dependency_path.group(1))), ROOT)
+        if target != crate_dirs[key]:
+            continue
+        if "package =" not in rest:
+            rest = f' package = "{published_name(key)}",{rest}'
+        rest = re.sub(r'\bversion\s*=\s*"[^"]*"', f'version = "{VERSION}"', rest)
+        new_line = f"{indent}{key}{assign}{rest}"
+        if new_line != line:
+            lines[index] = new_line
+            changed = True
+    if changed:
+        open(path, "w").write("\n".join(lines))
+
+
+def swap_reqwest(path):
+    text = open(path).read()
+    entry = re.search(r"^reqwest = \{.*?\}\n", text, re.MULTILINE | re.DOTALL)
+    if entry is None:
+        die("no `reqwest` entry in [workspace.dependencies]")
+    body = entry.group(0)
+    for field in ("git", "rev", "branch", "package", "version"):
+        body = re.sub(rf'\b{field} = "[^"]*",\s*', "", body)
+        body = re.sub(rf',\s*{field} = "[^"]*"', "", body)
+    body = body.replace(
+        "reqwest = { ",
+        f'reqwest = {{ package = "{REQWEST_PACKAGE}", version = "{REQWEST_VERSION}", ',
+        1,
+    )
+    open(path, "w").write(text[: entry.start()] + body + text[entry.end() :])
+
+
+def main():
+    if len(sys.argv) > 2:
+        die("usage: deltaq/scripts/stage-gpui-pre [REV]")
+    if git("branch", "--show-current") != BRANCH:
+        die(f"run this on the {BRANCH} branch")
+    if git("status", "--porcelain"):
+        die("working tree is not clean")
+
+    if len(sys.argv) == 2:
+        rev = sys.argv[1]
+    else:
+        git("fetch", "-q", "origin", "gpui", capture=False)
+        rev = "origin/gpui"
+    source = git("rev-parse", "--verify", f"{rev}^{{commit}}")
+    merge = subprocess.run(
+        ["git", "merge", "--no-ff", "--no-commit", "-X", "theirs", source], cwd=ROOT
+    )
+    if merge.returncode != 0:
+        die("merge stopped on a conflict -X theirs cannot resolve; resolve it, then rerun")
+
+    crate_dirs = crate_closure()
+    for crate, directory in crate_dirs.items():
+        rewrite_package_manifest(os.path.join(ROOT, directory, "Cargo.toml"), crate)
+    for manifest in git("ls-files", "*Cargo.toml", "Cargo.toml").split("\n"):
+        rewrite_path_dependencies(os.path.join(ROOT, manifest), crate_dirs)
+    swap_reqwest(os.path.join(ROOT, "Cargo.toml"))
+
+    # Validates the result and brings Cargo.lock in line with the new names.
+    metadata = subprocess.run(
+        ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+        cwd=ROOT, check=True, capture_output=True, text=True,
+    )
+    packages = {package["name"]: package["version"] for package in json.loads(metadata.stdout)["packages"]}
+    wrong = [crate for crate in crate_dirs if packages.get(published_name(crate)) != VERSION]
+    if wrong:
+        die(f"not renamed to {PREFIX}-* {VERSION}: {', '.join(sorted(wrong))}")
+    subprocess.run(["cargo", "update", "--workspace"], cwd=ROOT, check=True)
+
+    git("add", "-A")
+    merging = subprocess.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=ROOT, capture_output=True).returncode == 0
+    if not merging and subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode == 0:
+        print(f"{BRANCH} already matches {rev} ({source[:10]})")
+        return
+    names = "\n".join(f"  {published_name(crate)}" for crate in sorted(crate_dirs))
+    subject = f"Merge {rev} into {BRANCH}" if merging else f"Rename GPUI crates to {PREFIX}-* {VERSION}"
+    message = (
+        f"{subject}\n\n"
+        f"Staged from {source}.\n"
+        f"Renamed to {PREFIX}-* {VERSION} by deltaq/scripts/stage-gpui-pre:\n{names}\n"
+    )
+    git("commit", "-q", "-m", message, capture=False)
+    print(f"Committed {git('rev-parse', '--short', 'HEAD')}: {subject}")
+
+
+if __name__ == "__main__":
+    main()
