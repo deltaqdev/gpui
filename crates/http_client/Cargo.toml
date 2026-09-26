@@ -13,6 +13,7 @@ workspace = true
 test-support = []
 github-download = [
     "dep:async-fs",
+    "dep:async-std",
     "dep:async-tar",
     "dep:sha2",
     "dep:tempfile",
@@ -41,6 +42,13 @@ url.workspace = true
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 util = { workspace = true, optional = true }
 async-fs = { workspace = true, optional = true }
+# async-tar's Windows symlink support needs async-std's `unstable` feature,
+# which is otherwise only enabled when another crate in the graph asks for it.
+async-std = { workspace = true, optional = true }
 async-tar = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
+
+[package.metadata.cargo-shear]
+# Depended on only to enable its `unstable` feature for async-tar.
+ignored = ["async-std"]
