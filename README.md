@@ -21,7 +21,7 @@ Documentation for DeltaQ developers: <https://gpui.deltaq.dev>
 | `crates/{collections,util,sum_tree,scheduler,http_client,...}` | Upstream crates GPUI depends on |
 | `tooling/` | Upstream `perf` (test runner for `util_macros`) and dylint lints for GPUI |
 | `deltaq/` | Fork tooling: keep-list, sync and PR-tracking scripts, [conventions](deltaq/CONVENTIONS.md) |
-| `site/` | Source of gpui.deltaq.dev |
+| `site/` | Source of gpui.deltaq.dev (Astro + Mines theme, deployed by Vercel) |
 
 ## Building
 

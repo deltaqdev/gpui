@@ -90,6 +90,38 @@ Keep changes small and single-purpose. A change that Zed will not take (for
 example a DeltaQ-only platform target) is still tracked, with `zed_pr = 0`, so
 that syncs know which files to expect conflicts in.
 
+## Documentation site
+
+`site/` is an [Astro](https://astro.build) project using DeltaQ's
+[Mines](https://mines.deltaq.dev) theme, published at <https://gpui.deltaq.dev>.
+Vercel's Git integration builds it from the `gpui` branch (root directory
+`site`, `pnpm build`, output `dist`, with "Include source files outside of
+the Root Directory" enabled so the build can read the rest of the tree) and
+gives every pull request a preview URL; the `Docs site` workflow only checks
+that the site builds.
+
+```
+cd site
+pnpm install
+pnpm build      # also writes llms.txt, <page>.md routes and the search index
+pnpm preview
+```
+
+Pages are MDX under `site/src/content/docs`, ordered by numeric prefix. Files
+that live elsewhere in the tree (`crates/gpui/README.md`, `crates/gpui/docs/*`,
+`deltaq/CONVENTIONS.md`, `deltaq/changes.toml`) are pulled in at build time with
+an `include` code fence whose body is the path relative to the page:
+
+````
+```include
+../../../../../crates/gpui/docs/contexts.md
+```
+````
+
+Never copy those files into `site/`; a copy would drift from the tree it
+documents. `site/src/includes.ts` expands the fence for both the HTML pages
+and the raw-Markdown routes.
+
 ## Consuming this repository
 
 Vendor it as a git submodule and use path dependencies:

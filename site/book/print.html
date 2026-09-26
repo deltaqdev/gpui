@@ -1,0 +1,735 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>GPUI at DeltaQ</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="How DeltaQ developers build on GPUI, and how this fork tracks Zed">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">GPUI at DeltaQ</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/deltaqdev/gpui" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>GPUI is the GPU-accelerated UI framework behind the Zed editor. DeltaQ builds
+its agentic development tools, Rexa and Zedra, on it.</p>
+<p>This site has two jobs:</p>
+<ol>
+<li>Teach the GPUI concepts a DeltaQ developer needs before writing a view,
+without reading Zed's source first. Start with <a href="getting-started.html">Getting started</a>
+and read the Concepts chapters in order.</li>
+<li>Explain how <a href="fork/conventions.html">our fork</a> of GPUI works: how it stays in
+step with Zed, how to pick up a Zed pull request early, and how to send our
+own changes back.</li>
+</ol>
+<p>The Upstream reference chapters are Zed's own GPUI documentation, included
+unchanged from the vendored source so they are always current.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
+<h2 id="add-gpui-to-a-deltaq-project"><a class="header" href="#add-gpui-to-a-deltaq-project">Add GPUI to a DeltaQ project</a></h2>
+<p>The fork is consumed as a git submodule with path dependencies. Nothing is
+published to crates.io.</p>
+<pre><code class="language-sh">git submodule add --depth 1 https://github.com/deltaqdev/gpui vendor/gpui
+</code></pre>
+<pre><code class="language-toml"># Cargo.toml of the consuming workspace
+[workspace.dependencies]
+gpui = { path = "vendor/gpui/crates/gpui" }
+gpui_platform = { path = "vendor/gpui/crates/gpui_platform", features = ["font-kit", "wayland", "x11"] }
+
+[patch.crates-io]
+# Cargo only honours [patch] in the root workspace, so repeat the entries
+# GPUI needs. Copy the current revisions from vendor/gpui/Cargo.toml.
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "&lt;rev&gt;" }
+calloop = { git = "https://github.com/zed-industries/calloop" }
+# Crates such as gpui-component depend on `gpui` from crates.io; this points
+# them at the vendored copy so there is one GPUI in the build.
+gpui = { path = "vendor/gpui/crates/gpui" }
+</code></pre>
+<p>Set <code>shallow = true</code> for the submodule in <code>.gitmodules</code>. The full Zed history
+behind this repository is about 400 MB.</p>
+<h2 id="a-first-window"><a class="header" href="#a-first-window">A first window</a></h2>
+<pre><pre class="playground"><code class="language-rust no_run">use gpui::*;
+
+struct Hello;
+
+impl Render for Hello {
+    fn render(&amp;mut self, _window: &amp;mut Window, _cx: &amp;mut Context&lt;Self&gt;) -&gt; impl IntoElement {
+        div().size_full().flex().items_center().justify_center().child("Hello from GPUI")
+    }
+}
+
+fn main() {
+    gpui_platform::application().run(|cx: &amp;mut App| {
+        cx.open_window(WindowOptions::default(), |_window, cx| cx.new(|_| Hello))
+            .expect("failed to open window");
+    });
+}</code></pre></pre>
+<p>Run the upstream examples to see more:</p>
+<pre><code class="language-sh">cd vendor/gpui
+cargo run -p gpui --example hello_world
+cargo run -p gpui --example uniform_list
+</code></pre>
+<h2 id="building-the-fork-itself"><a class="header" href="#building-the-fork-itself">Building the fork itself</a></h2>
+<pre><code class="language-sh">cargo build -p gpui
+cargo test --workspace
+script/clippy
+</code></pre>
+<p>Linux needs the system packages listed in <code>.github/workflows/deltaq-ci.yml</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="application-and-contexts"><a class="header" href="#application-and-contexts">Application and contexts</a></h1>
+<p>Everything in GPUI starts from an <code>Application</code>. Its <code>run</code> callback receives
+<code>&amp;mut App</code>, the root context: global state, entities, windows, and system
+services all hang off it.</p>
+<p>Contexts are the argument named <code>cx</code>. There are four you will meet:</p>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Where you get it</th><th>Use it for</th></tr></thead><tbody>
+<tr><td><code>App</code></td><td><code>Application::run</code>, event handlers on elements</td><td>Reading and updating entities, globals, opening windows</td></tr>
+<tr><td><code>Context&lt;T&gt;</code></td><td>Inside <code>Entity&lt;T&gt;::update</code> and <code>Render::render</code></td><td>Same as <code>App</code>, plus <code>cx.notify()</code>, <code>cx.emit()</code>, <code>cx.spawn()</code> bound to this entity</td></tr>
+<tr><td><code>AsyncApp</code></td><td><code>cx.spawn(...)</code></td><td>Held across <code>.await</code> points on the foreground thread</td></tr>
+<tr><td><code>AsyncWindowContext</code></td><td><code>cx.spawn_in(window, ...)</code></td><td>As above, with a window attached</td></tr>
+</tbody></table>
+</div>
+<p><code>Context&lt;T&gt;</code> dereferences to <code>App</code>, so a function that takes <code>&amp;App</code> also
+accepts <code>&amp;Context&lt;T&gt;</code>.</p>
+<p>When a function takes callbacks, they come after <code>cx</code>. When a function needs
+the window, the argument is <code>window: &amp;mut Window</code> and it comes before <code>cx</code>.</p>
+<p>Inside an <code>update</code> closure, always use the inner <code>cx</code> the closure gives you.
+Reaching for an outer context inside the closure is a double borrow and
+panics at runtime.</p>
+<p>Zed's own <a href="concepts/../upstream/contexts.html">Contexts in depth</a> chapter describes the
+full type hierarchy.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="entities"><a class="header" href="#entities">Entities</a></h1>
+<p>An <code>Entity&lt;T&gt;</code> is a handle to state of type <code>T</code> owned by the application.
+State lives in the app, not in your struct, so handles are cheap to clone and
+can be shared between views.</p>
+<pre><code class="language-rust ignore">let counter: Entity&lt;Counter&gt; = cx.new(|_cx| Counter { value: 0 });
+
+counter.read(cx).value;                       // &amp;T
+counter.update(cx, |counter, cx| {            // &amp;mut T plus Context&lt;Counter&gt;
+    counter.value += 1;
+    cx.notify();                              // re-render views observing it
+});</code></pre>
+<p>Rules that matter in practice:</p>
+<ul>
+<li>Updating an entity that is already being updated panics. Structure code so
+one <code>update</code> finishes before another begins on the same entity.</li>
+<li><code>cx.notify()</code> marks the entity dirty. Views re-render and <code>cx.observe</code>
+callbacks fire. Forgetting it is the usual reason a view does not refresh.</li>
+<li><code>cx.emit(event)</code> sends a typed event; the entity declares
+<code>impl EventEmitter&lt;MyEvent&gt; for MyEntity {}</code>. Listeners use <code>cx.subscribe</code>
+and keep the returned <code>Subscription</code> in a <code>_subscriptions: Vec&lt;Subscription&gt;</code>
+field, since dropping it unsubscribes.</li>
+<li><code>entity.downgrade()</code> gives a <code>WeakEntity&lt;T&gt;</code> whose <code>update</code> and <code>read_with</code>
+return <code>anyhow::Result</code>. Use weak handles in long-lived tasks and in any
+structure where two entities reference each other, or neither is dropped.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="concurrency-and-tasks"><a class="header" href="#concurrency-and-tasks">Concurrency and tasks</a></h1>
+<p>GPUI has one foreground thread. All entity access and all rendering happen
+there. Background threads do work that touches no entity.</p>
+<pre><code class="language-rust ignore">// Foreground: may touch entities through the AsyncApp it receives.
+cx.spawn(async move |this: WeakEntity&lt;Self&gt;, cx: &amp;mut AsyncApp| {
+    let result = cx.background_spawn(async move { expensive() }).await;
+    this.update(cx, |this, cx| {
+        this.result = Some(result);
+        cx.notify();
+    })
+})
+.detach();</code></pre>
+<p>Both <code>spawn</code> and <code>background_spawn</code> return a <code>Task&lt;R&gt;</code>. Dropping a task
+cancels it, so every task must be awaited, detached
+(<code>.detach()</code> or <code>.detach_and_log_err(cx)</code>), or stored in a field for as long
+as the work should run.</p>
+<p>Two conventions from Zed that this fork keeps:</p>
+<ul>
+<li>
+<p>Scope clones with shadowing inside the spawn block:</p>
+<pre><code class="language-rust ignore">executor.spawn({
+    let task_ran = task_ran.clone();
+    async move { *task_ran.borrow_mut() = true; }
+});</code></pre>
+</li>
+<li>
+<p>In tests, use the executor's timers
+(<code>cx.background_executor().timer(duration).await</code>) rather than <code>smol</code>
+timers, so <code>run_until_parked()</code> can drive them.</p>
+</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="elements-and-rendering"><a class="header" href="#elements-and-rendering">Elements and rendering</a></h1>
+<p>A view is an <code>Entity&lt;T&gt;</code> where <code>T: Render</code>. <code>render</code> returns an element tree
+laid out with flexbox, styled with Tailwind-like methods.</p>
+<pre><code class="language-rust ignore">impl Render for Card {
+    fn render(&amp;mut self, _window: &amp;mut Window, cx: &amp;mut Context&lt;Self&gt;) -&gt; impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .border_1()
+            .child(self.title.clone())
+            .when(self.expanded, |this| this.child(self.body.clone()))
+            .when_some(self.footer.as_ref(), |this, footer| this.child(footer.clone()))
+    }
+}</code></pre>
+<ul>
+<li><code>SharedString</code> is the text type. It wraps <code>&amp;'static str</code> or <code>Arc&lt;str&gt;</code> and
+implements <code>IntoElement</code>, so it can be passed to <code>.child</code> directly.</li>
+<li><code>.when(condition, ...)</code> and <code>.when_some(option, ...)</code> keep conditional
+children readable without <code>if</code> blocks that return different types.</li>
+<li>Components that are built only to be turned into elements implement
+<code>RenderOnce</code> and derive <code>IntoElement</code>, taking <code>self</code> by value and <code>&amp;mut App</code>
+instead of a <code>Context&lt;Self&gt;</code>.</li>
+<li>Long lists use <code>uniform_list</code> or <code>list</code> so only visible rows are rendered.
+See the <code>uniform_list</code> and <code>list_example</code> examples in <code>crates/gpui/examples</code>.</li>
+</ul>
+<p>Rendering is immediate mode over retained state: each frame rebuilds the
+element tree from entity state, and GPUI diffs layout and paints on the GPU.
+Keep <code>render</code> cheap and free of side effects. In particular, never call
+<code>entity.update</code> on another entity from inside <code>render</code>; the fork's dylint
+lints under <code>tooling/lints</code> flag this.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="input-actions-and-focus"><a class="header" href="#input-actions-and-focus">Input, actions, and focus</a></h1>
+<h2 id="events"><a class="header" href="#events">Events</a></h2>
+<p>Handlers are registered on elements:</p>
+<pre><code class="language-rust ignore">div().on_click(cx.listener(|this: &amp;mut Self, event, window, cx| {
+    this.clicked += 1;
+    cx.notify();
+}))</code></pre>
+<p><code>cx.listener</code> binds a handler to the current entity, giving it <code>&amp;mut Self</code>
+and a <code>Context&lt;Self&gt;</code> when it fires.</p>
+<h2 id="actions"><a class="header" href="#actions">Actions</a></h2>
+<p>Actions are named commands that can be bound to keys or dispatched from code.</p>
+<pre><code class="language-rust ignore">actions!(card, [Expand, Collapse]);
+
+div()
+    .key_context("Card")
+    .on_action(cx.listener(|this, _: &amp;Expand, _window, cx| {
+        this.expanded = true;
+        cx.notify();
+    }))</code></pre>
+<p>Dispatch from code with <code>window.dispatch_action(Expand.boxed_clone(), cx)</code> or
+<code>focus_handle.dispatch_action(&amp;Expand, window, cx)</code>. Actions with data use the
+<code>Action</code> derive macro. Doc comments on actions are user-visible text.</p>
+<h2 id="focus-and-dispatch"><a class="header" href="#focus-and-dispatch">Focus and dispatch</a></h2>
+<p>Key events travel along the focus path, from the focused element up to the
+window root, and each element's <code>key_context</code> decides which bindings apply.
+Zed's <a href="concepts/../upstream/key_dispatch.html">Key dispatch</a> chapter has the full model.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="gpui-readme"><a class="header" href="#gpui-readme">GPUI README</a></h1>
+<p>Included from <code>crates/gpui/README.md</code> in the vendored tree. Crates.io version
+numbers in it do not apply to this fork; use path dependencies as described in
+<a href="upstream/../getting-started.html">Getting started</a>.</p>
+<h1 id="welcome-to-gpui"><a class="header" href="#welcome-to-gpui">Welcome to GPUI!</a></h1>
+<p>GPUI is a hybrid immediate and retained mode, GPU accelerated, UI framework
+for Rust, designed to support a wide variety of applications.</p>
+<h2 id="getting-started-1"><a class="header" href="#getting-started-1">Getting Started</a></h2>
+<p>GPUI is still in active development as we work on the Zed code editor, and is still pre-1.0. There will often be breaking changes between versions. You'll also need to use the latest version of stable Rust. Add <code>gpui</code>, and optionally <code>gpui_platform</code>, to your <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">gpui = { version = "*" }
+gpui_platform = { version = "*", features = ["font-kit", "wayland", "x11"] }
+</code></pre>
+<p>Everything in a standalone GPUI app starts with an <code>Application</code>. You can create one with <code>gpui_platform::application()</code>, which picks the windowing and text backends for the host OS, and kick off your application by passing a callback to <code>Application::run()</code>. Inside this callback, you can create a new window with <code>App::open_window()</code> and register your first root view.</p>
+<pre><pre class="playground"><code class="language-rust no_run">use gpui::*;
+
+fn main() {
+    gpui_platform::application().run(|cx: &amp;mut App| {
+        // ..
+    });
+}</code></pre></pre>
+<h3 id="gpui_platform"><a class="header" href="#gpui_platform"><code>gpui_platform</code></a></h3>
+<p>The features on <code>gpui_platform</code> are platform-specific, so the list above is a safe cross-platform default. If you build for a single platform, you can trim it:</p>
+<ul>
+<li>
+<p><strong>macOS</strong> — Rendering uses Metal and is always available, but glyph rasterization needs <code>font-kit</code>. Without it, GPUI falls back to a placeholder text system that lays text out but renders no glyphs.</p>
+<pre><code class="language-toml">gpui_platform = { version = "*", features = ["font-kit"] }
+</code></pre>
+</li>
+<li>
+<p><strong>Linux / FreeBSD</strong> — enable at least one windowing backend for desktop windows: <code>wayland</code>, <code>x11</code>, or both. These features also compile the renderer and text system, so no separate text feature is needed.</p>
+<pre><code class="language-toml">gpui_platform = { version = "*", features = ["wayland", "x11"] }
+</code></pre>
+</li>
+<li>
+<p><strong>Windows</strong> — no features are required. Windowing uses Win32 and text uses DirectWrite. <code>font-kit</code> has no effect here.</p>
+</li>
+</ul>
+<h3 id="additional-topics"><a class="header" href="#additional-topics">Additional Topics</a></h3>
+<ul>
+<li><a href="upstream/_ownership_and_data_flow">Ownership and data flow</a></li>
+<li><a href="upstream/_accessibility">Accessibility</a></li>
+</ul>
+<h3 id="dependencies"><a class="header" href="#dependencies">Dependencies</a></h3>
+<p>GPUI has various system dependencies that it needs in order to work.</p>
+<h4 id="macos"><a class="header" href="#macos">macOS</a></h4>
+<p>On macOS, GPUI uses Metal for rendering. In order to use Metal, you need to do the following:</p>
+<ul>
+<li>Install <a href="https://apps.apple.com/us/app/xcode/id497799835?mt=12">Xcode</a> from the macOS App Store, or from the <a href="https://developer.apple.com/download/all/">Apple Developer</a> website. Note this requires a developer account.</li>
+</ul>
+<blockquote>
+<p>Ensure you launch Xcode after installing, and install the macOS components, which is the default option.</p>
+</blockquote>
+<ul>
+<li>
+<p>Install <a href="https://developer.apple.com/xcode/resources/">Xcode command line tools</a></p>
+<pre><code class="language-sh">xcode-select --install
+</code></pre>
+</li>
+<li>
+<p>Ensure that the Xcode command line tools are using your newly installed copy of Xcode:</p>
+<pre><code class="language-sh">sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+</code></pre>
+</li>
+</ul>
+<h2 id="the-big-picture"><a class="header" href="#the-big-picture">The Big Picture</a></h2>
+<p>GPUI offers three different <a href="https://en.wikipedia.org/wiki/Register_(sociolinguistics)">registers</a> depending on your needs:</p>
+<ul>
+<li>
+<p>State management and communication with <code>Entity</code>'s. Whenever you need to store application state that communicates between different parts of your application, you'll want to use GPUI's entities. Entities are owned by GPUI and are only accessible through an owned smart pointer similar to an <code>Rc</code>. See the <code>app::context</code> module for more information.</p>
+</li>
+<li>
+<p>High level, declarative UI with views. All UI in GPUI starts with a view. A view is simply an <code>Entity</code> that can be rendered, by implementing the <code>Render</code> trait. At the start of each frame, GPUI will call this render method on the root view of a given window. Views build a tree of <code>elements</code>, lay them out and style them with a tailwind-style API, and then give them to GPUI to turn into pixels. See the <code>div</code> element for an all purpose swiss-army knife of rendering.</p>
+</li>
+<li>
+<p>Low level, imperative UI with Elements. Elements are the building blocks of UI in GPUI, and they provide a nice wrapper around an imperative API that provides as much flexibility and control as you need. Elements have total control over how they and their child elements are rendered and can be used for making efficient views into large lists, implement custom layouting for a code editor, and anything else you can think of. See the <code>element</code> module for more information.</p>
+</li>
+</ul>
+<p>Each of these registers has one or more corresponding contexts that can be accessed from all GPUI services. This context is your main interface to GPUI, and is used extensively throughout the framework.</p>
+<h2 id="other-resources"><a class="header" href="#other-resources">Other Resources</a></h2>
+<p>In addition to the systems above, GPUI provides a range of smaller services that are useful for building complex applications:</p>
+<ul>
+<li>
+<p>Actions are user-defined structs that are used for converting keystrokes into logical operations in your UI. Use this for implementing keyboard shortcuts, such as cmd-q. See the <code>action</code> module for more information.</p>
+</li>
+<li>
+<p>Platform services, such as <code>quit the app</code> or <code>open a URL</code> are available as methods on the <code>app::App</code>.</p>
+</li>
+<li>
+<p>An async executor that is integrated with the platform's event loop. See the <code>executor</code> module for more information.,</p>
+</li>
+<li>
+<p>The <code>[gpui::test]</code> macro provides a convenient way to write tests for your GPUI applications. Tests also have their own kind of context, a <code>TestAppContext</code> which provides ways of simulating common platform input. See <code>app::test_context</code> and <code>test</code> modules for more details.</p>
+</li>
+</ul>
+<p>Currently, the best way to learn about these APIs is to read the Zed source code or drop a question in the <a href="https://zed.dev/community-links">Zed Discord</a>. We're working on improving the documentation, creating more examples, and will be publishing more guides to GPUI on our <a href="https://zed.dev/blog">blog</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="contexts-in-depth"><a class="header" href="#contexts-in-depth">Contexts in depth</a></h1>
+<p>Included from <code>crates/gpui/docs/contexts.md</code>.</p>
+<h1 id="contexts"><a class="header" href="#contexts">Contexts</a></h1>
+<p>GPUI makes extensive use of <em>context parameters</em> (typically named <code>cx</code>) to provide access to application state and services. These contexts are references passed to functions, enabling interaction with global state, windows, entities, and system services.</p>
+<hr />
+<h2 id="app"><a class="header" href="#app"><code>App</code></a></h2>
+<p>The root context granting access to the application's global state. This context owns all entities' data and can be used to read or update the data referenced by an <code>Entity&lt;T&gt;</code>.</p>
+<h2 id="contextt"><a class="header" href="#contextt"><code>Context&lt;T&gt;</code></a></h2>
+<p>A context provided when interacting with an <code>Entity&lt;T&gt;</code>, with additional methods related to that specific entity such as notifying observers and emitting events. This context dereferences into <code>App</code>, meaning any function which can take an <code>App</code> reference can also take a <code>Context&lt;T&gt;</code> reference, allowing you to access the application's global state.</p>
+<h2 id="asyncapp-and-asyncwindowcontext"><a class="header" href="#asyncapp-and-asyncwindowcontext"><code>AsyncApp</code> and <code>AsyncWindowContext</code></a></h2>
+<p>Whereas the above contexts are always passed to your code as references, you can call <code>to_async</code> on the reference to create an async context, which has a static lifetime and can be held across <code>await</code> points in async code. When you interact with entities with an async context, the calls become fallible, because the context may outlive the window or even the app itself.</p>
+<h2 id="testappcontext"><a class="header" href="#testappcontext"><code>TestAppContext</code></a></h2>
+<p>These are similar to the async contexts above, but they panic if you attempt to access a non-existent app or window, and they also contain other features specific to tests.</p>
+<hr />
+<h1 id="non-context-core-types"><a class="header" href="#non-context-core-types">Non-Context Core Types</a></h1>
+<h2 id="window"><a class="header" href="#window"><code>Window</code></a></h2>
+<p>Provides access to the state of an application window. This type has a root view (an <code>Entity</code> implementing <code>Render</code>) which it can read/update, but since it is not a context, you must pass a <code>&amp;mut App</code> (or a context which dereferences to it) to do so, along with other functions interacting with global state. You can obtain a <code>Window</code> from an <code>WindowHandle</code> by calling <code>WindowHandle::update</code>.</p>
+<h2 id="entityt"><a class="header" href="#entityt"><code>Entity&lt;T&gt;</code></a></h2>
+<p>A handle to a structure requiring state. This data is owned by the <code>App</code> and can be accessed and modified via references to contexts. If <code>T</code> implements <code>Render</code>, then the entity is sometimes referred to as a view. Entities can be observed by other entities and windows, allowing a closure to be called when <code>notify</code> is called on the entity's <code>Context</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="key-dispatch"><a class="header" href="#key-dispatch">Key dispatch</a></h1>
+<p>Included from <code>crates/gpui/docs/key_dispatch.md</code>.</p>
+<h1 id="key-dispatch-1"><a class="header" href="#key-dispatch-1">Key Dispatch</a></h1>
+<p>GPUI is designed for keyboard-first interactivity.</p>
+<p>To expose functionality to the mouse, you render a button with a click handler.</p>
+<p>To expose functionality to the keyboard, you bind an <em>action</em> in a <em>key context</em>.</p>
+<p>Actions are similar to framework-level events like <code>MouseDown</code>, <code>KeyDown</code>, etc, but you can define them yourself:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>mod menu {
+    #[gpui::action]
+    struct MoveUp;
+
+    #[gpui::action]
+    struct MoveDown;
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Actions are frequently unit structs, for which we have a macro. The above could also be written:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>mod menu {
+    actions!(gpui, [MoveUp, MoveDown]);
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Actions can also be more complex types:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>mod menu {
+    #[gpui::action]
+    struct Move {
+        direction: Direction,
+        select: bool,
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<p>To bind actions, chain <code>on_action</code> on to your element:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>impl Render for Menu {
+    fn render(&amp;mut self, window: &amp;mut Window, cx: &amp;mut Context&lt;Self&gt;) -&gt; impl IntoElement {
+        div()
+            .on_action(|this: &amp;mut Menu, move: &amp;MoveUp, window: &amp;mut Window, cx: &amp;mut Context&lt;Menu&gt;| {
+                // ...
+            })
+            .on_action(|this, move: &amp;MoveDown, cx| {
+                // ...
+            })
+            .children(unimplemented!())
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<p>In order to bind keys to actions, you need to declare a <em>key context</em> for part of the element tree by calling <code>key_context</code>.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>impl Render for Menu {
+    fn render(&amp;mut self, window: &amp;mut Window, cx: &amp;mut Context&lt;Self&gt;) -&gt; impl IntoElement {
+        div()
+            .key_context("menu")
+            .on_action(|this: &amp;mut Menu, move: &amp;MoveUp, window: &amp;mut Window, cx: &amp;mut Context&lt;Menu&gt;| {
+                // ...
+            })
+            .on_action(|this, move: &amp;MoveDown, cx| {
+                // ...
+            })
+            .children(unimplemented!())
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Now you can target your context in the keymap. Note how actions are identified in the keymap by their fully-qualified type name.</p>
+<pre><code class="language-json">{
+  "context": "menu",
+  "bindings": {
+    "up": "menu::MoveUp",
+    "down": "menu::MoveDown"
+  }
+}
+</code></pre>
+<p>If you had opted for the more complex type definition, you'd provide the serialized representation of the action alongside the name:</p>
+<pre><code class="language-json">{
+  "context": "menu",
+  "bindings": {
+    "up": ["menu::Move", {direction: "up", select: false}]
+    "down": ["menu::Move", {direction: "down", select: false}]
+    "shift-up": ["menu::Move", {direction: "up", select: true}]
+    "shift-down": ["menu::Move", {direction: "down", select: true}]
+  }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="fork-conventions"><a class="header" href="#fork-conventions">Fork conventions</a></h1>
+<p>This repository is <code>zed-industries/zed</code> trimmed to GPUI. It exists so DeltaQ
+products (Rexa, Zedra) can use GPUI changes before Zed merges them, ship their
+own GPUI changes, and send those changes back to Zed, all without waiting on
+Zed's release cycle.</p>
+<p>Everything specific to this fork lives under <code>deltaq/</code>, <code>site/</code>, and
+<code>.github/workflows/deltaq-*.yml</code>. Those paths never exist upstream, so upstream
+merges never touch them.</p>
+<h2 id="the-one-rule"><a class="header" href="#the-one-rule">The one rule</a></h2>
+<p><strong>Stripping never edits kept files.</strong> The trim is expressed only as a list of
+kept paths (<code>deltaq/keep.txt</code>) and a regeneration of the root <code>Cargo.toml</code>.
+Every other upstream file is either present byte-for-byte or absent. That is
+what keeps <code>git merge upstream/main</code> mechanical.</p>
+<p>Changes to kept files are allowed, but only as a <em>change</em> (below) that is
+meant to reach Zed. Never fix something in a kept crate on <code>gpui</code> directly.</p>
+<h2 id="branches"><a class="header" href="#branches">Branches</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Branch</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>gpui</code></td><td>Default. Trimmed upstream plus merged changes. Consumers pin this.</td></tr>
+<tr><td><code>sync/upstream-&lt;sha&gt;</code></td><td>Output of <code>sync-upstream</code>, merged into <code>gpui</code> by PR.</td></tr>
+<tr><td><code>change/&lt;name&gt;</code></td><td>One change, based on <code>gpui</code>. Own work or an adopted Zed PR head.</td></tr>
+<tr><td><code>adopt/pr-&lt;n&gt;</code>, <code>update/&lt;name&gt;-&lt;sha&gt;</code></td><td>Merge branches produced by the scripts, merged into <code>gpui</code> by PR.</td></tr>
+<tr><td><code>to-zed/&lt;name&gt;</code></td><td>Cherry-picks of a change onto <code>upstream/main</code>, pushed to your Zed fork for the Zed PR.</td></tr>
+</tbody></table>
+</div>
+<p><code>upstream</code> is a remote (<code>https://github.com/zed-industries/zed</code>), never a work
+branch. Feature work happens on the trimmed tree, which builds in a fraction
+of the time.</p>
+<h2 id="workflows"><a class="header" href="#workflows">Workflows</a></h2>
+<p>Sync with upstream (weekly by CI, or by hand):</p>
+<pre><code>deltaq/scripts/sync-upstream      # merge, strip, regenerate Cargo.toml, resolve
+                                  # exit 2 = real conflict in a kept crate
+</code></pre>
+<p>Adopt a Zed PR before Zed merges it:</p>
+<pre><code>deltaq/scripts/adopt-pr 12345     # branch, merge into adopt/pr-12345, record in changes.toml
+</code></pre>
+<p>Start an own change and send it to Zed:</p>
+<pre><code>deltaq/scripts/new-change fast-tables        # change/fast-tables off gpui
+# commit work, open a PR against gpui
+deltaq/scripts/prepare-upstream-pr fast-tables   # cherry-pick onto upstream/main, open Zed PR
+</code></pre>
+<p>See where things stand:</p>
+<pre><code>deltaq/scripts/status
+deltaq/scripts/track-changes      # queries GitHub for each tracked Zed PR
+</code></pre>
+<h2 id="change-lifecycle"><a class="header" href="#change-lifecycle">Change lifecycle</a></h2>
+<p>Every non-upstream diff on <code>gpui</code> is one entry in <code>deltaq/changes.toml</code>.</p>
+<ol>
+<li><code>tracking</code>: the Zed PR is open. The daily <code>Track changes</code> workflow watches
+its head. When it moves, a fork PR titled <code>Update Zed #n</code> follows it.</li>
+<li><code>merged-upstream</code>: Zed merged it. The next <code>sync-upstream</code> takes upstream's
+version of the change's files (Zed squash-merges, so the content matches)
+and flips the entry to <code>done</code>.</li>
+<li><code>closed-upstream</code>: Zed closed it unmerged. Decide: keep it as an own change
+(edit the entry to <code>kind = "own"</code>, <code>zed_pr = 0</code>, <code>status = "tracking"</code>) or
+revert it from <code>gpui</code>.</li>
+</ol>
+<p>Keep changes small and single-purpose. A change that Zed will not take (for
+example a DeltaQ-only platform target) is still tracked, with <code>zed_pr = 0</code>, so
+that syncs know which files to expect conflicts in.</p>
+<h2 id="consuming-this-repository"><a class="header" href="#consuming-this-repository">Consuming this repository</a></h2>
+<p>Vendor it as a git submodule and use path dependencies:</p>
+<pre><code class="language-toml">gpui = { path = "vendor/gpui/crates/gpui" }
+gpui_platform = { path = "vendor/gpui/crates/gpui_platform" }
+
+[patch.crates-io]
+# Cargo applies [patch] only from the root workspace, so the consumer must
+# repeat the entries gpui needs. Copy them from this repository's Cargo.toml.
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "..." }
+calloop = { git = "https://github.com/zed-industries/calloop" }
+# If the consumer also depends on crates that pull `gpui` from crates.io
+# (for example gpui-component), point that name at the vendored copy:
+gpui = { path = "vendor/gpui/crates/gpui" }
+</code></pre>
+<p>Set <code>shallow = true</code> for the submodule in <code>.gitmodules</code>; the full history is
+about 400 MB.</p>
+<h2 id="licensing"><a class="header" href="#licensing">Licensing</a></h2>
+<p>Every crate kept here is Apache-2.0 (<code>deltaq/scripts/check-licenses</code> enforces
+it). <code>LICENSE-APACHE</code> at the root is the licence for the whole tree.</p>
+<ul>
+<li>Apache-2.0 requires modified files to carry a notice that they changed. This
+fork satisfies that at repository level: <code>README.md</code> states that the tree is
+a modified subset of Zed, and every change is listed in <code>deltaq/changes.toml</code>.</li>
+<li>"Zed" and "GPUI" are Zed Industries names. Do not publish these crates to
+crates.io under their upstream names.</li>
+<li>Fonts under <code>assets/fonts</code> are SIL OFL 1.1; keep their licence files.</li>
+<li>Third-party crate licences are checked with <code>cargo-about</code> using upstream's
+accepted list (<code>script/licenses/zed-licenses.toml</code>).</li>
+<li>Contributing to Zed requires signing Zed's CLA on your first Zed PR.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="tracked-changes"><a class="header" href="#tracked-changes">Tracked changes</a></h1>
+<p>Every diff this fork carries ahead of Zed is one entry in
+<code>deltaq/changes.toml</code>. The daily <code>Track changes</code> workflow keeps the entries
+current; <code>deltaq/scripts/status</code> prints them.</p>
+<pre><code class="language-toml"># Every change this fork carries on top of upstream zed-industries/zed.
+#
+# Managed by deltaq/scripts/{adopt-pr,track-changes,prepare-upstream-pr}.
+# Edit by hand only to fix a mistake. Field reference:
+#
+# [[change]]
+# name = "pr-12345"            # branch is change/&lt;name&gt;
+# kind = "upstream-pr"         # "upstream-pr": someone else's Zed PR we adopted early
+#                              # "own": a DeltaQ change, PRed back to Zed when ready
+# zed_pr = 12345               # Zed PR number, 0 while an own change has no PR yet
+# head_sha = "abc..."          # Zed PR head (or own branch head) merged into `gpui` so far
+# files = ["crates/gpui/src/window.rs"]   # paths touched, used to auto-resolve conflicts
+# status = "tracking"          # tracking | merged-upstream | closed-upstream | done
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
