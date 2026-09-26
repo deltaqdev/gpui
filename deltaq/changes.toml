@@ -17,5 +17,5 @@ name = "gpui-windows-test-support"
 kind = "own"
 zed_pr = 0
 head_sha = ""
-files = []
+files = ["crates/gpui_windows/Cargo.toml"]
 status = "tracking"
