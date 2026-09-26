@@ -1040,7 +1040,7 @@ impl PlatformWindow for WindowsWindow {
             .renderer
             .borrow_mut()
             .render_to_image(scene, self.state.background_appearance.get())
-}
+    }
 
     fn draw_composed(&self, scene: gpui::ComposedScene<'_>) {
         self.state

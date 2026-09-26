@@ -16,9 +16,9 @@ mod bounds_tree;
 mod color;
 /// The default colors used by GPUI.
 pub mod colors;
+mod composition;
 #[cfg(feature = "profiler")]
 mod debug_overlay;
-mod composition;
 mod element;
 mod elements;
 mod executor;

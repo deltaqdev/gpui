@@ -68,8 +68,8 @@ use std::io::Cursor;
 use std::ops;
 use std::time::Duration;
 use std::{
-    ffi::OsString,
     any::Any,
+    ffi::OsString,
     fmt::{self, Debug},
     ops::Range,
     path::{Path, PathBuf},

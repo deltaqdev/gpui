@@ -145,7 +145,7 @@ cocoa.workspace = true
 objc.workspace = true
 
 [target.'cfg(target_os = "windows")'.dev-dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 
 [dev-dependencies]
 backtrace.workspace = true

@@ -8143,14 +8143,13 @@ mod tests {
 
     use crate::{
         AnyWindowHandle, AppContext as _, Bounds, ContentMask, Context, DevicePixels,
-        DispatchPhase, DragMoveEvent, Empty, ExternalDragPayload, ExternalPaths,
-        FileDragPaths, FileDropEvent, FocusHandle, InputEvent as _, InteractiveElement as _,
-        IntoElement, KeyDownEvent, Keystroke, LongPressEvent, MouseButton, MouseDownEvent,
-        MouseMoveEvent, ParentElement, Pixels, PlatformInput, PlatformSurfaceAttachment,
-        Point, Render, RequestFrameOptions, ScaledPixels, StatefulInteractiveElement as _,
-        Styled, TestAppContext, TouchDragEvent, TouchEvent, TouchId, TouchPhase, Underline,
-        UnderlineStyle, Window, WindowAppearance, WindowOptions, canvas, div, hsla, point,
-        px, size,
+        DispatchPhase, DragMoveEvent, Empty, ExternalDragPayload, ExternalPaths, FileDragPaths,
+        FileDropEvent, FocusHandle, InputEvent as _, InteractiveElement as _, IntoElement,
+        KeyDownEvent, Keystroke, LongPressEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+        ParentElement, Pixels, PlatformInput, PlatformSurfaceAttachment, Point, Render,
+        RequestFrameOptions, ScaledPixels, StatefulInteractiveElement as _, Styled, TestAppContext,
+        TouchDragEvent, TouchEvent, TouchId, TouchPhase, Underline, UnderlineStyle, Window,
+        WindowAppearance, WindowOptions, canvas, div, hsla, point, px, size,
     };
 
     /// Visibility transitions reach observers exactly once each, with the new
