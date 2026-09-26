@@ -50,7 +50,6 @@ rustfmt.toml
 clippy.toml
 .cargo/config.toml
 .config/typos.toml
-.config/nextest.toml
 .gitattributes
 .gitignore
 .git-blame-ignore-revs

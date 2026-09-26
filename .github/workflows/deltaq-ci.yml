@@ -51,19 +51,20 @@ jobs:
             gcc g++ make cmake clang lld llvm build-essential \
             libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev \
             libvulkan1 libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev \
-            libstdc++-14-dev pkg-config
+            libstdc++-14-dev pkg-config mesa-vulkan-drivers
       - name: Deny warnings without overriding .cargo/config.toml rustflags
         shell: bash
         run: |
           mkdir -p ../.cargo
           printf "[target.'cfg(all())']\nrustflags = [\"-D\", \"warnings\"]\n" > ../.cargo/config.toml
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
       - name: Clippy
         shell: bash
         run: cargo clippy --workspace --release --all-targets --all-features -- --deny warnings
       - name: Tests
         shell: bash
-        run: cargo test --workspace --no-fail-fast
+        run: cargo nextest run --workspace --no-fail-fast --no-tests=warn --config-file deltaq/nextest.toml
       - if: always()
         shell: bash
         run: rm -rf ../.cargo
