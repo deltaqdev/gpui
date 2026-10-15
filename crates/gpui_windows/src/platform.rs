@@ -552,7 +552,7 @@ fn encode_restart_arguments(arguments: &[OsString]) -> OsString {
 }
 
 fn contains_window_handle(
-    window_handles: &RwLock<SmallVec<[SafeHwnd; 4]>>,
+    window_handles: &RwLock<SmallVec<[TrackedWindow; 4]>>,
     window_handle: HWND,
 ) -> bool {
     window_handles
