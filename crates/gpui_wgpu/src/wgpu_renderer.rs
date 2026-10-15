@@ -814,19 +814,6 @@ impl WgpuRendererCore {
             &shader_module,
         );
 
-        let paths_blend = wgpu::BlendState {
-            color: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::One,
-                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                operation: wgpu::BlendOperation::Add,
-            },
-            alpha: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::One,
-                dst_factor: wgpu::BlendFactor::One,
-                operation: wgpu::BlendOperation::Add,
-            },
-        };
-
         let paths = create_pipeline(
             "paths",
             "vs_path",
@@ -837,7 +824,7 @@ impl WgpuRendererCore {
             wgpu::PrimitiveTopology::TriangleStrip,
             &[Some(wgpu::ColorTargetState {
                 format: surface_format,
-                blend: Some(paths_blend),
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             1,
@@ -2320,6 +2307,9 @@ pub struct WgpuHeadlessRenderer {
 impl WgpuHeadlessRenderer {
     pub fn new() -> anyhow::Result<Self> {
         let (context, target_format) = WgpuContext::new_headless()?;
+        // The device may be shared with earlier renderers; observe only errors raised from
+        // here on, including any while this renderer builds its pipelines.
+        let observed_error_generation = context.errors().current_generation();
         let atlas = Arc::new(WgpuAtlas::from_context(&context));
         let core = WgpuRendererCore::new(
             &context,
@@ -2332,7 +2322,7 @@ impl WgpuHeadlessRenderer {
             context,
             core,
             render_target: None,
-            observed_error_generation: 0,
+            observed_error_generation,
         })
     }
 
