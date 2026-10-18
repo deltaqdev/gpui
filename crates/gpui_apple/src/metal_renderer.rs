@@ -16,8 +16,9 @@ use objc2::runtime::AnyObject;
 
 use core_foundation::base::TCFType;
 use core_video::{
-    metal_texture::CVMetalTextureGetTexture, metal_texture_cache::CVMetalTextureCache,
-    pixel_buffer::kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+    metal_texture::CVMetalTextureGetTexture,
+    metal_texture_cache::CVMetalTextureCache,
+    pixel_buffer::{kCVPixelFormatType_32BGRA, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange},
 };
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{
@@ -131,6 +132,7 @@ pub struct MetalRenderer {
     monochrome_sprites_pipeline_state: metal::RenderPipelineState,
     polychrome_sprites_pipeline_state: metal::RenderPipelineState,
     surfaces_pipeline_state: metal::RenderPipelineState,
+    bgra_surfaces_pipeline_state: metal::RenderPipelineState,
     unit_vertices: metal::Buffer,
     #[allow(clippy::arc_with_non_send_sync)]
     instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>,
@@ -354,6 +356,14 @@ impl MetalRenderer {
             "surface_fragment",
             MTLPixelFormat::BGRA8Unorm,
         );
+        let bgra_surfaces_pipeline_state = build_pipeline_state(
+            &device,
+            &library,
+            "bgra_surfaces",
+            "surface_vertex",
+            "bgra_surface_fragment",
+            MTLPixelFormat::BGRA8Unorm,
+        );
 
         let command_queue = device.new_command_queue();
         let sprite_atlas = shared_sprite_atlas
@@ -377,6 +387,7 @@ impl MetalRenderer {
             monochrome_sprites_pipeline_state,
             polychrome_sprites_pipeline_state,
             surfaces_pipeline_state,
+            bgra_surfaces_pipeline_state,
             unit_vertices,
             instance_buffer_pool,
             sprite_atlas,
@@ -1172,7 +1183,6 @@ impl MetalRenderer {
             return;
         }
 
-        command_encoder.set_render_pipeline_state(&self.surfaces_pipeline_state);
         command_encoder.set_vertex_buffer(
             SurfaceInputIndex::Vertices as u64,
             Some(&self.unit_vertices),
@@ -1195,10 +1205,50 @@ impl MetalRenderer {
                 DevicePixels::from(surface.image_buffer.get_height() as i32),
             );
 
-            assert_eq!(
-                surface.image_buffer.get_pixel_format(),
-                kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            command_encoder.set_vertex_bytes(
+                SurfaceInputIndex::TextureSize as u64,
+                mem::size_of_val(&texture_size) as u64,
+                &texture_size as *const Size<DevicePixels> as *const _,
             );
+
+            // An IOSurface shared by another process (a simulator's framebuffer) is BGRA;
+            // it is sampled in place, never copied.
+            let pixel_format = surface.image_buffer.get_pixel_format();
+            if pixel_format == kCVPixelFormatType_32BGRA {
+                let texture = match self.core_video_texture_cache.create_texture_from_image(
+                    surface.image_buffer.as_concrete_TypeRef(),
+                    None,
+                    MTLPixelFormat::BGRA8Unorm,
+                    surface.image_buffer.get_width(),
+                    surface.image_buffer.get_height(),
+                    0,
+                ) {
+                    Ok(texture) => texture,
+                    Err(error) => {
+                        log::error!("bgra surface texture failed: {error:?}");
+                        continue;
+                    }
+                };
+                command_encoder.set_render_pipeline_state(&self.bgra_surfaces_pipeline_state);
+                command_encoder.set_fragment_texture(
+                    SurfaceInputIndex::BgraTexture as u64,
+                    unsafe {
+                        let texture = CVMetalTextureGetTexture(texture.as_concrete_TypeRef());
+                        Some(metal::TextureRef::from_ptr(texture as *mut _))
+                    },
+                );
+                command_encoder.draw_primitives_instanced_base_instance(
+                    metal::MTLPrimitiveType::Triangle,
+                    0,
+                    6,
+                    1,
+                    (first_surface + index) as u64,
+                );
+                continue;
+            }
+
+            assert_eq!(pixel_format, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange);
+            command_encoder.set_render_pipeline_state(&self.surfaces_pipeline_state);
 
             let y_texture = self
                 .core_video_texture_cache
@@ -1223,11 +1273,6 @@ impl MetalRenderer {
                 )
                 .unwrap();
 
-            command_encoder.set_vertex_bytes(
-                SurfaceInputIndex::TextureSize as u64,
-                mem::size_of_val(&texture_size) as u64,
-                &texture_size as *const Size<DevicePixels> as *const _,
-            );
             // let y_texture = y_texture.get_texture().unwrap().
             command_encoder.set_fragment_texture(SurfaceInputIndex::YTexture as u64, unsafe {
                 let texture = CVMetalTextureGetTexture(y_texture.as_concrete_TypeRef());
@@ -1616,6 +1661,7 @@ enum SurfaceInputIndex {
     TextureSize = 3,
     YTexture = 4,
     CbCrTexture = 5,
+    BgraTexture = 6,
 }
 
 #[repr(C)]
@@ -1667,5 +1713,75 @@ impl gpui::PlatformHeadlessRenderer for MetalHeadlessRenderer {
 
     fn sprite_atlas(&self) -> Arc<dyn gpui::PlatformAtlas> {
         self.renderer.sprite_atlas().clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MetalHeadlessRenderer;
+    use core_foundation::base::TCFType;
+    use core_foundation::boolean::CFBoolean;
+    use core_foundation::dictionary::CFDictionary;
+    use core_foundation::string::CFString;
+    use core_video::pixel_buffer::{CVPixelBuffer, CVPixelBufferKeys, kCVPixelFormatType_32BGRA};
+    use core_video::r#return::kCVReturnSuccess;
+    use gpui::{
+        Bounds, ContentMask, DevicePixels, PaintSurface, PlatformHeadlessRenderer as _,
+        ScaledPixels, Scene, point, size,
+    };
+
+    const SIDE: usize = 16;
+
+    /// An IOSurface-backed BGRA buffer, as a simulator framebuffer arrives.
+    fn bgra_buffer(blue: u8, green: u8, red: u8) -> CVPixelBuffer {
+        let options = CFDictionary::from_CFType_pairs(&[
+            (
+                CFString::from(CVPixelBufferKeys::IOSurfaceProperties),
+                CFDictionary::<CFString, CFString>::from_CFType_pairs(&[]).as_CFType(),
+            ),
+            (
+                CFString::from(CVPixelBufferKeys::MetalCompatibility),
+                CFBoolean::true_value().as_CFType(),
+            ),
+        ]);
+        let buffer = CVPixelBuffer::new(kCVPixelFormatType_32BGRA, SIDE, SIDE, Some(&options))
+            .expect("pixel buffer");
+        assert_eq!(buffer.lock_base_address(0), kCVReturnSuccess);
+        let row = buffer.get_bytes_per_row();
+        let pixels = unsafe {
+            std::slice::from_raw_parts_mut(buffer.get_base_address() as *mut u8, row * SIDE)
+        };
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                let at = y * row + x * 4;
+                pixels[at..at + 4].copy_from_slice(&[blue, green, red, 255]);
+            }
+        }
+        assert_eq!(buffer.unlock_base_address(0), kCVReturnSuccess);
+        buffer
+    }
+
+    #[test]
+    fn a_bgra_surface_draws_its_own_pixels() {
+        let bounds: Bounds<ScaledPixels> = Bounds {
+            origin: point(ScaledPixels(0.), ScaledPixels(0.)),
+            size: size(ScaledPixels(SIDE as f32), ScaledPixels(SIDE as f32)),
+        };
+        let mut scene = Scene::default();
+        scene.insert_primitive(PaintSurface {
+            order: 0,
+            bounds,
+            content_mask: ContentMask { bounds },
+            image_buffer: bgra_buffer(10, 120, 230),
+        });
+        scene.finish();
+        let image = MetalHeadlessRenderer::new()
+            .render_scene_to_image(
+                &scene,
+                size(DevicePixels(SIDE as i32), DevicePixels(SIDE as i32)),
+            )
+            .expect("rendered");
+        let pixel = image.get_pixel(SIDE as u32 / 2, SIDE as u32 / 2).0;
+        assert_eq!([pixel[0], pixel[1], pixel[2]], [230, 120, 10]);
     }
 }
