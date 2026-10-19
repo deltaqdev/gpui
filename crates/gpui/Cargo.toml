@@ -143,6 +143,7 @@ windows = { workspace = true, features = [
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 cocoa.workspace = true
+core-foundation.workspace = true
 objc.workspace = true
 
 [target.'cfg(target_os = "windows")'.dev-dependencies]
@@ -191,6 +192,10 @@ path = "examples/hello_world.rs"
 [[example]]
 name = "native_webview"
 path = "examples/native_webview.rs"
+
+[[example]]
+name = "surface_framebuffer"
+path = "examples/surface_framebuffer.rs"
 
 [[example]]
 name = "move_entity_between_windows"

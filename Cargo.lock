@@ -2514,6 +2514,7 @@ dependencies = [
  "bitflags 2.13.1",
  "chrono",
  "cocoa 0.26.0",
+ "core-foundation 0.10.0",
  "core-video",
  "criterion",
  "ctor",
