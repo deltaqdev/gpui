@@ -23,8 +23,11 @@ fn embed_resource() {
         let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
         let rc_file = out_dir.join("app.rc");
         let path = manifest.to_string_lossy().replace('\\', "/");
-        std::fs::write(&rc_file, format!("#define RT_MANIFEST 24\n1 RT_MANIFEST \"{path}\"\n"))
-            .unwrap();
+        std::fs::write(
+            &rc_file,
+            format!("#define RT_MANIFEST 24\n1 RT_MANIFEST \"{path}\"\n"),
+        )
+        .unwrap();
         embed_resource::compile(rc_file, embed_resource::NONE)
             .manifest_required()
             .unwrap();
