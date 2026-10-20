@@ -43,5 +43,5 @@ name = "windows-app-manifest"
 kind = "own"
 zed_pr = 0
 head_sha = ""
-files = []
+files = ["crates/gpui/build.rs"]
 status = "tracking"
