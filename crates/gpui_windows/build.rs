@@ -1,15 +1,15 @@
 #![allow(clippy::disallowed_methods, reason = "build scripts are exempt")]
 
 fn main() {
-    #[cfg(target_os = "windows")]
-    {
-        // Compile HLSL shaders
-        #[cfg(not(debug_assertions))]
+    // A build script's own `cfg` describes the host; the target's comes from `CARGO_CFG_*`, so a
+    // cross build from macOS or Linux compiles the shaders too (with `GPUI_FXC_PATH` set).
+    let target_is_windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
+    let target_has_debug_assertions = std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some();
+    if target_is_windows && !target_has_debug_assertions {
         compile_shaders();
     }
 }
 
-#[cfg(all(target_os = "windows", not(debug_assertions)))]
 mod shader_compilation {
     use std::{
         fs,
@@ -19,11 +19,16 @@ mod shader_compilation {
     };
 
     pub fn compile_shaders() {
-        let shader_path =
-            PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/shaders.hlsl");
+        let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+        let shader_path = manifest_dir.join("src/shaders.hlsl");
         let out_dir = std::env::var("OUT_DIR").unwrap();
 
         println!("cargo:rerun-if-changed={}", shader_path.display());
+        println!(
+            "cargo:rerun-if-changed={}",
+            manifest_dir.join("src/color_text_raster.hlsl").display()
+        );
+        println!("cargo:rerun-if-env-changed=GPUI_FXC_PATH");
 
         // Check if fxc.exe is available
         let fxc_path = find_fxc_compiler();
@@ -56,8 +61,7 @@ mod shader_compilation {
         }
 
         {
-            let shader_path = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-                .join("src/color_text_raster.hlsl");
+            let shader_path = manifest_dir.join("src/color_text_raster.hlsl");
             compile_shader_for_module(
                 "emoji_rasterization",
                 &out_dir,
@@ -69,6 +73,7 @@ mod shader_compilation {
     }
 
     /// Locate `binary` in the newest installed Windows SDK.
+    #[cfg(target_os = "windows")]
     pub fn find_latest_windows_sdk_binary(
         binary: &str,
     ) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
@@ -120,6 +125,21 @@ mod shader_compilation {
             return path;
         }
 
+        find_host_fxc_compiler()
+    }
+
+    /// Off Windows there is no SDK to search: a cross build names a runner for fxc.exe, such as a
+    /// script that runs it under Wine.
+    #[cfg(not(target_os = "windows"))]
+    fn find_host_fxc_compiler() -> String {
+        println!(
+            "cargo::error=Cross-compiling gpui_windows shaders needs GPUI_FXC_PATH: a program that runs fxc.exe"
+        );
+        process::exit(1);
+    }
+
+    #[cfg(target_os = "windows")]
+    fn find_host_fxc_compiler() -> String {
         // Try to find in PATH
         // NOTE: This has to be `where.exe` on Windows, not `where`, it must be ended with `.exe`
         if let Ok(output) = std::process::Command::new("where.exe")
@@ -238,5 +258,4 @@ mod shader_compilation {
     }
 }
 
-#[cfg(all(target_os = "windows", not(debug_assertions)))]
 use shader_compilation::compile_shaders;
