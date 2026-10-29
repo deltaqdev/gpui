@@ -15,6 +15,7 @@
 
 
 
+
 [[change]]
 name = "http-client-async-std-unstable"
 kind = "own"
@@ -53,4 +54,12 @@ kind = "upstream-pr"
 zed_pr = 65186
 head_sha = "4abffd7ea830aca0c052e5dc504686649079b7cf"
 files = ["crates/gpui_macos/src/window.rs"]
+status = "tracking"
+
+[[change]]
+name = "windows-cross-shaders"
+kind = "own"
+zed_pr = 0
+head_sha = ""
+files = []
 status = "tracking"
