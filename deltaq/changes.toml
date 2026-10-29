@@ -61,5 +61,5 @@ name = "windows-cross-shaders"
 kind = "own"
 zed_pr = 0
 head_sha = ""
-files = []
+files = ["crates/gpui_windows/build.rs"]
 status = "tracking"
