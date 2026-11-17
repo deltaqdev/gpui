@@ -4,6 +4,13 @@ fn main() {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg_attr(
+    target_os = "macos",
+    allow(
+        deprecated,
+        reason = "the macOS webview is driven through the cocoa crate, which is deprecated in favor of objc2"
+    )
+)]
 mod platform {
     use std::rc::Rc;
     #[cfg(target_os = "windows")]
@@ -29,7 +36,7 @@ mod platform {
     #[cfg(target_os = "windows")]
     use gpui::{
         DispatchPhase, Modifiers, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-        NavigationDirection, ScrollDelta, ScrollWheelEvent,
+        NavigationDirection, ScrollDelta, ScrollEvent,
     };
     #[cfg(target_os = "windows")]
     use webview2_com::{
@@ -346,14 +353,6 @@ mod platform {
         webview: Rc<NativeWebView>,
     }
 
-    impl IntoElement for NativeWebViewElement {
-        type Element = Self;
-
-        fn into_element(self) -> Self::Element {
-            self
-        }
-    }
-
     impl Element for NativeWebViewElement {
         type RequestLayoutState = ();
         type PrepaintState = ();
@@ -485,7 +484,7 @@ mod platform {
                         }
                     }
                 });
-                window.on_mouse_event(move |event: &ScrollWheelEvent, phase, _, _| {
+                window.on_mouse_event(move |event: &ScrollEvent, phase, _, _| {
                     if phase == DispatchPhase::Bubble {
                         let amount = match event.delta {
                             ScrollDelta::Pixels(delta) => f32::from(delta.y),

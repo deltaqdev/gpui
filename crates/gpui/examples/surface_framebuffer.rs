@@ -29,17 +29,21 @@ mod platform {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    use core_foundation::base::TCFType;
-    use core_foundation::boolean::CFBoolean;
-    use core_foundation::dictionary::CFDictionary;
-    use core_foundation::string::CFString;
-    use core_video::pixel_buffer::{CVPixelBuffer, CVPixelBufferKeys, kCVPixelFormatType_32BGRA};
-    use core_video::r#return::kCVReturnSuccess;
+    use std::ptr;
+
     use gpui::{
         App, Bounds, Context, ObjectFit, SharedString, Window, WindowBounds, WindowOptions, div,
         prelude::*, px, rgb, size, surface,
     };
     use gpui_platform::application;
+    use objc2_core_foundation::{CFBoolean, CFDictionary, CFRetained, CFType};
+    use objc2_core_video::{
+        CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddress,
+        CVPixelBufferGetBytesPerRow, CVPixelBufferGetHeight, CVPixelBufferGetWidth,
+        CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
+        kCVPixelBufferIOSurfacePropertiesKey, kCVPixelBufferMetalCompatibilityKey,
+        kCVPixelFormatType_32BGRA, kCVReturnSuccess,
+    };
 
     use crate::example_support;
 
@@ -50,7 +54,7 @@ mod platform {
     /// The pixel buffer handed to the producer thread.
     ///
     /// CoreVideo retains and locks pixel buffers atomically, so sharing the handle is sound.
-    struct SharedBuffer(CVPixelBuffer);
+    struct SharedBuffer(CFRetained<CVPixelBuffer>);
 
     unsafe impl Send for SharedBuffer {}
     unsafe impl Sync for SharedBuffer {}
@@ -68,7 +72,7 @@ mod platform {
     }
 
     struct FramebufferDemo {
-        buffers: [CVPixelBuffer; 3],
+        buffers: [CFRetained<CVPixelBuffer>; 3],
         producer: Arc<Producer>,
         started: Instant,
     }
@@ -99,8 +103,8 @@ mod platform {
             let frames = self.producer.frames.load(Ordering::Relaxed);
             let seconds = self.started.elapsed().as_secs_f64().max(0.001);
             let buffer = &self.buffers[0];
-            let row = buffer.get_bytes_per_row();
-            let frame_bytes = row * buffer.get_height();
+            let row = CVPixelBufferGetBytesPerRow(buffer);
+            let frame_bytes = row * CVPixelBufferGetHeight(buffer);
             let mode = if self.producer.triple_buffered.load(Ordering::Relaxed) {
                 "three: shown, in flight, being written"
             } else {
@@ -133,19 +137,38 @@ mod platform {
     }
 
     /// An IOSurface-backed, Metal-compatible BGRA pixel buffer.
-    fn framebuffer(width: usize, height: usize) -> CVPixelBuffer {
-        let options = CFDictionary::from_CFType_pairs(&[
+    fn framebuffer(width: usize, height: usize) -> CFRetained<CVPixelBuffer> {
+        // SAFETY: CoreVideo's attribute keys are immutable statics.
+        let (surface_properties_key, metal_compatibility_key) = unsafe {
             (
-                CFString::from(CVPixelBufferKeys::IOSurfaceProperties),
-                CFDictionary::<CFString, CFString>::from_CFType_pairs(&[]).as_CFType(),
-            ),
-            (
-                CFString::from(CVPixelBufferKeys::MetalCompatibility),
-                CFBoolean::true_value().as_CFType(),
-            ),
-        ]);
-        CVPixelBuffer::new(kCVPixelFormatType_32BGRA, width, height, Some(&options))
-            .expect("failed to create an IOSurface-backed pixel buffer")
+                kCVPixelBufferIOSurfacePropertiesKey,
+                kCVPixelBufferMetalCompatibilityKey,
+            )
+        };
+        let surface_properties = CFDictionary::<CFType, CFType>::empty();
+        let attributes = CFDictionary::<_, CFType>::from_slices(
+            &[surface_properties_key, metal_compatibility_key],
+            &[&surface_properties, CFBoolean::new(true)],
+        );
+        let mut buffer = ptr::null_mut();
+        // SAFETY: The attributes are a valid dictionary and the output pointer is writable.
+        let status = unsafe {
+            CVPixelBufferCreate(
+                None,
+                width,
+                height,
+                kCVPixelFormatType_32BGRA,
+                Some(attributes.as_opaque()),
+                ptr::NonNull::from(&mut buffer),
+            )
+        };
+        assert_eq!(
+            status, kCVReturnSuccess,
+            "failed to create an IOSurface-backed pixel buffer"
+        );
+        let buffer = ptr::NonNull::new(buffer).expect("CoreVideo returned no pixel buffer");
+        // SAFETY: The successful create call transfers ownership of this non-null buffer.
+        unsafe { CFRetained::from_raw(buffer) }
     }
 
     /// Writes a moving pattern until the window closes: when triple buffered,
@@ -175,13 +198,23 @@ mod platform {
     }
 
     fn draw(buffer: &CVPixelBuffer, tick: usize) {
-        let (width, height) = (buffer.get_width(), buffer.get_height());
-        if buffer.lock_base_address(0) != kCVReturnSuccess {
+        let (width, height) = (
+            CVPixelBufferGetWidth(buffer),
+            CVPixelBufferGetHeight(buffer),
+        );
+        // SAFETY: Locking with no flags allows writes until the matching unlock below.
+        if unsafe { CVPixelBufferLockBaseAddress(buffer, CVPixelBufferLockFlags::empty()) }
+            != kCVReturnSuccess
+        {
             return;
         }
-        let row = buffer.get_bytes_per_row();
+        let row = CVPixelBufferGetBytesPerRow(buffer);
+        // SAFETY: The base address is locked and spans `row * height` bytes.
         let pixels = unsafe {
-            std::slice::from_raw_parts_mut(buffer.get_base_address() as *mut u8, row * height)
+            std::slice::from_raw_parts_mut(
+                CVPixelBufferGetBaseAddress(buffer).cast::<u8>(),
+                row * height,
+            )
         };
         for y in 0..height {
             for x in 0..width {
@@ -195,7 +228,8 @@ mod platform {
                 ]);
             }
         }
-        buffer.unlock_base_address(0);
+        // SAFETY: Balances the lock above.
+        unsafe { CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags::empty()) };
     }
 
     impl Drop for FramebufferDemo {
