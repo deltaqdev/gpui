@@ -10,3 +10,13 @@ default-filter = '''
 not (package(gpui) and test(/^app::bench_context::/))
 and not (package(util) and test(/^process::windows_tests::/))
 '''
+
+# gpui_macos pasteboard tests each create a "unique" NSPasteboard, but under
+# parallel processes they can still see each other's contents (test_read_image
+# then reads another test's file paths). Run them one at a time.
+[test-groups]
+macos-pasteboard = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'package(gpui_macos) and test(/^pasteboard::tests::/)'
+test-group = 'macos-pasteboard'
