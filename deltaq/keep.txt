@@ -1,26 +1,20 @@
 # Paths kept from upstream zed-industries/zed. One path prefix per line.
-# A trailing slash keeps a whole directory. Everything else upstream ships is
-# removed by `deltaq/scripts/strip`, both on the initial trim and on every sync.
+# A trailing slash keeps a whole directory, and `*` matches any characters.
+# Everything else upstream ships is removed by `deltaq/scripts/strip`, both on
+# the initial trim and on every sync.
 #
-# The crate set is the GPUI publish closure (upstream computes it with
-# `cargo xtask gpui list`; xtask itself is GPL so it is not kept). Re-check it whenever a sync fails on a
-# missing path dependency.
+# The fork carries all of GPUI, so every `crates/gpui*` crate is kept by glob,
+# including new ones upstream adds (a new platform crate is the point of the
+# fork, even when nothing kept depends on it yet). Their in-workspace
+# dependencies are listed explicitly below; re-check them whenever a sync fails
+# on a missing path dependency (upstream computes the publish closure with
+# `cargo xtask gpui list`; xtask itself is GPL so it is not kept).
 
 # GPUI crates
-crates/gpui/
-crates/gpui_apple/
-crates/gpui_linux/
-crates/gpui_macos/
-crates/gpui_macros/
-crates/gpui_platform/
-crates/gpui_shared_string/
-crates/gpui_tokio/
-crates/gpui_util/
-crates/gpui_web/
-crates/gpui_wgpu/
-crates/gpui_windows/
+crates/gpui*/
 
 # In-workspace dependencies of GPUI
+crates/bench_metrics/
 crates/collections/
 crates/http_client/
 crates/http_client_tls/

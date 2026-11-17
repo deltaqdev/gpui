@@ -4,6 +4,7 @@
 Used once for the initial trim and again after every upstream merge, so the
 set of kept paths lives in exactly one place.
 """
+import fnmatch
 import os
 import subprocess
 import sys
@@ -24,7 +25,10 @@ def load_keep():
 
 def is_kept(path, prefixes):
     for prefix in prefixes:
-        if prefix.endswith("/"):
+        if "*" in prefix:
+            if fnmatch.fnmatchcase(path, prefix + "*" if prefix.endswith("/") else prefix):
+                return True
+        elif prefix.endswith("/"):
             if path.startswith(prefix):
                 return True
         elif path == prefix:
