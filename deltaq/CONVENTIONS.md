@@ -49,7 +49,9 @@ Sync with upstream (weekly by CI, or by hand):
 
 ```
 deltaq/scripts/sync-upstream      # merge, strip, regenerate Cargo.toml, resolve
-                                  # exit 2 = real conflict in a kept crate
+                                  # exit 2 = real conflict in a kept crate, listed
+# resolve the listed files, git add them, then:
+deltaq/scripts/sync-upstream --continue   # regenerate Cargo.toml/Cargo.lock, commit
 ```
 
 Adopt a Zed PR before Zed merges it:

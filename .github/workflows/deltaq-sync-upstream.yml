@@ -46,6 +46,6 @@ jobs:
         if: steps.sync.outputs.exit == '2'
         run: |
           gh issue create --title "Upstream sync needs manual conflict resolution" \
-            --body-file <(printf 'Run `deltaq/scripts/sync-upstream` locally.\n\n```\n%s\n```\n' "$(cat sync.log)")
+            --body-file <(printf 'Run `deltaq/scripts/sync-upstream` locally, resolve the files it lists, `git add` them, then run `deltaq/scripts/sync-upstream --continue`.\n\n```\n%s\n```\n' "$(cat sync.log)")
       - if: steps.sync.outputs.exit != '0' && steps.sync.outputs.exit != '2'
         run: cat sync.log; exit 1
