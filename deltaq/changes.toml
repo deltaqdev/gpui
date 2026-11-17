@@ -16,13 +16,17 @@
 
 
 
+
+
+
+
 [[change]]
 name = "http-client-async-std-unstable"
 kind = "own"
 zed_pr = 0
 head_sha = ""
 files = ["crates/http_client/Cargo.toml", "Cargo.lock"]
-status = "tracking"
+status = "done"
 
 [[change]]
 name = "gpui-windows-test-support"
@@ -37,7 +41,7 @@ name = "pr-62379"
 kind = "upstream-pr"
 zed_pr = 62379
 head_sha = "5b1e8e435abc6df27cd34159b1962a57d3237d48"
-files = ["Cargo.lock", "crates/gpui/Cargo.toml", "crates/gpui/examples/README.md", "crates/gpui/examples/native_webview.html", "crates/gpui/examples/native_webview.rs", "crates/gpui/src/composition.rs", "crates/gpui/src/gpui.rs", "crates/gpui/src/platform.rs", "crates/gpui/src/scene.rs", "crates/gpui/src/window.rs", "crates/gpui_apple/src/metal_renderer.rs", "crates/gpui_macos/src/window.rs", "crates/gpui_windows/src/directx_renderer.rs", "crates/gpui_windows/src/platform.rs", "crates/gpui_windows/src/window.rs"]
+files = ["Cargo.lock", "crates/gpui/Cargo.toml", "crates/gpui/examples/README.md", "crates/gpui/examples/native_webview.html", "crates/gpui/examples/native_webview.rs", "crates/gpui/src/composition.rs", "crates/gpui/src/gpui.rs", "crates/gpui/src/platform.rs", "crates/gpui/src/scene.rs", "crates/gpui/src/window.rs", "crates/gpui_apple/src/metal_renderer.rs", "crates/gpui_macos/src/window.rs", "crates/gpui_windows/src/directx_renderer.rs", "crates/gpui_windows/src/window.rs"]
 status = "tracking"
 
 [[change]]
@@ -52,7 +56,7 @@ status = "tracking"
 name = "pr-65186"
 kind = "upstream-pr"
 zed_pr = 65186
-head_sha = "4abffd7ea830aca0c052e5dc504686649079b7cf"
+head_sha = "8880559852fb2fd2cb8e331cf4e8ac2983301407"
 files = ["crates/gpui_macos/src/window.rs"]
 status = "tracking"
 
@@ -62,4 +66,12 @@ kind = "own"
 zed_pr = 0
 head_sha = ""
 files = ["crates/gpui_windows/build.rs"]
+status = "tracking"
+
+[[change]]
+name = "surface-bgra"
+kind = "own"
+zed_pr = 0
+head_sha = ""
+files = ["crates/gpui/Cargo.toml", "crates/gpui/examples/surface_framebuffer.rs", "crates/gpui_apple/src/metal_renderer.rs", "crates/gpui_apple/src/shaders.metal"]
 status = "tracking"
