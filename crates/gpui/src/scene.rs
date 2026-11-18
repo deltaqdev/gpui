@@ -53,6 +53,7 @@ struct ReplayExtent {
     high_ordering: DrawOrder,
     max_key: Key,
     bottom_max_shared_kind: PrimitiveKind,
+    unit_count: usize,
 }
 
 #[derive(Default)]
@@ -289,6 +290,9 @@ impl Scene {
         previous_scene: &Scene,
         recorded_layer_depth: usize,
     ) {
+        if range.is_empty() {
+            return;
+        }
         if recorded_layer_depth != 0 || !self.layer_stack.is_empty() {
             return self.replay(range, previous_scene);
         }
@@ -302,12 +306,18 @@ impl Scene {
                 high_ordering: extent.high_ordering,
                 max_key: extent.max_key,
                 bottom_max_shared_kind: extent.bottom_max_shared_kind,
+                unit_count: extent.unit_count,
             },
             None => match previous_scene.measure_replay(&range) {
                 Ok(Some(extent)) => extent,
                 Ok(None) | Err(()) => return self.replay(range, previous_scene),
             },
         };
+
+        // One unit already takes one insert, with tighter bounds.
+        if extent.unit_count < 2 {
+            return self.replay(range, previous_scene);
+        }
 
         let base_ordering = match self.primitive_bounds.max_key_intersecting(&extent.bounds) {
             Some(key) if key.kind <= extent.bottom_max_shared_kind => key.ordering,
@@ -375,6 +385,7 @@ impl Scene {
                 kind: extent.max_key.kind,
             },
             bottom_max_shared_kind: extent.bottom_max_shared_kind,
+            unit_count: extent.unit_count,
         });
     }
 
@@ -416,10 +427,19 @@ impl Scene {
         let mut high_ordering: Option<DrawOrder> = None;
         let mut max_key: Option<Key> = None;
         let mut bottom_max_shared_kind = PrimitiveKind::Surface;
-        let mut layer_depth = 0usize;
+        let mut unit_count = 0;
+        let mut layer_has_primitives = SmallVec::<[bool; 4]>::new();
         for operation in operations {
             match operation {
                 PaintOperation::Primitive(primitive) => {
+                    match layer_has_primitives.last_mut() {
+                        Some(has_primitives) if !*has_primitives => {
+                            *has_primitives = true;
+                            unit_count += 1;
+                        }
+                        None => unit_count += 1,
+                        _ => {}
+                    }
                     let ordering = primitive.order();
                     let key = Key {
                         ordering,
@@ -443,13 +463,13 @@ impl Scene {
                     high_ordering = Some(high_ordering.map_or(ordering, |high| high.max(ordering)));
                     max_key = Some(max_key.map_or(key, |max_key| max_key.max(key)));
                 }
-                PaintOperation::StartLayer => layer_depth += 1,
+                PaintOperation::StartLayer => layer_has_primitives.push(false),
                 PaintOperation::EndLayer => {
-                    layer_depth = layer_depth.checked_sub(1).ok_or(())?;
+                    layer_has_primitives.pop().ok_or(())?;
                 }
             }
         }
-        if layer_depth != 0 {
+        if !layer_has_primitives.is_empty() {
             return Err(());
         }
         Ok(bounds
@@ -465,6 +485,7 @@ impl Scene {
                     high_ordering,
                     max_key,
                     bottom_max_shared_kind,
+                    unit_count,
                 },
             ))
     }
@@ -1681,6 +1702,7 @@ mod tests {
 
         let mut replayed = Scene::default();
         replayed.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        assert!(replayed.replay_extent(&(0..replayed.len())).is_some());
         replayed.finish();
         assert_eq!(
             replayed
@@ -1694,6 +1716,62 @@ mod tests {
                 .map(|quad| quad.bounds)
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn one_insert_replay_uses_per_operation_replay_for_one_unit() {
+        let mut primitive = Scene::default();
+        primitive.insert_primitive(quad(0.));
+        let mut layered = Scene::default();
+        layered.push_layer();
+        layered.insert_primitive(quad(0.));
+        layered.push_layer();
+        layered.pop_layer();
+        layered.insert_primitive(quad(5.));
+        layered.pop_layer();
+
+        for recorded in [primitive, layered] {
+            let range = 0..recorded.len();
+            assert!(matches!(
+                recorded.measure_replay(&range),
+                Ok(Some(ReplayExtent { unit_count: 1, .. }))
+            ));
+            let mut actual = Scene::default();
+            let mut expected = Scene::default();
+            actual.insert_primitive(underline(0.));
+            expected.insert_primitive(underline(0.));
+            actual.replay_with_one_insert(range.clone(), &recorded, 0);
+            expected.replay(range, &recorded);
+            assert!(actual.replay_extents.is_empty());
+            assert_eq!(actual.len(), expected.len());
+            assert_eq!(batch_labels(&mut actual), batch_labels(&mut expected));
+            assert_eq!(
+                actual
+                    .quads
+                    .iter()
+                    .map(|quad| quad.order)
+                    .collect::<Vec<_>>(),
+                expected
+                    .quads
+                    .iter()
+                    .map(|quad| quad.order)
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn one_insert_replay_skips_empty_ranges_and_preserves_empty_layers() {
+        let mut recorded = Scene::default();
+        recorded.push_layer();
+        recorded.pop_layer();
+        let mut replayed = Scene::default();
+        replayed.replay_with_one_insert(0..0, &recorded, 0);
+        assert_eq!(replayed.len(), 0);
+        replayed.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        assert_eq!(replayed.len(), recorded.len());
+        assert!(replayed.is_empty());
+        assert!(replayed.replay_extents.is_empty());
     }
 
     #[test]
