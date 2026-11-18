@@ -17,9 +17,6 @@ use std::{
 #[expect(missing_docs)]
 pub type DrawOrder = u32;
 
-// Layer delimiters and primitives awaiting their layer's insertion have no key yet.
-const UNASSIGNED_DRAW_ORDER: DrawOrder = DrawOrder::MAX;
-
 /// A boolean stored as a `u32` so that GPU-facing structs contain no
 /// compiler-inserted padding bytes, which would be undefined behavior to
 /// reinterpret as `&[u8]` when writing instance buffers. Guaranteed to be
@@ -61,7 +58,6 @@ struct ReplayExtent {
 #[expect(missing_docs)]
 pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
-    paint_orderings: Vec<DrawOrder>,
     replay_extents: Vec<ReplayExtent>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<usize>,
@@ -81,7 +77,6 @@ pub struct Scene {
 impl Scene {
     pub fn clear(&mut self) {
         self.paint_operations.clear();
-        self.paint_orderings.clear();
         self.replay_extents.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
@@ -172,7 +167,6 @@ impl Scene {
             max_shared_kind: PrimitiveKind::Surface,
         });
         self.paint_operations.push(PaintOperation::StartLayer);
-        self.paint_orderings.push(UNASSIGNED_DRAW_ORDER);
     }
 
     pub fn pop_layer(&mut self) {
@@ -183,7 +177,6 @@ impl Scene {
             }
         }
         self.paint_operations.push(PaintOperation::EndLayer);
-        self.paint_orderings.push(UNASSIGNED_DRAW_ORDER);
     }
 
     fn insert_layer(&mut self, layer: Layer) {
@@ -194,9 +187,9 @@ impl Scene {
             self.primitive_bounds
                 .insert(layer.bounds, layer.max_kind, layer.max_shared_kind);
         for index in layer.primitives.into_iter().flatten() {
-            if let PaintOperation::Primitive(primitive) = &self.paint_operations[index] {
+            if let PaintOperation::Primitive(primitive) = &mut self.paint_operations[index] {
+                primitive.set_order(order);
                 let primitive = primitive.clone();
-                self.paint_orderings[index] = order;
                 self.push_primitive(primitive, order);
             }
         }
@@ -207,7 +200,7 @@ impl Scene {
     }
 
     /// Returns whether the primitive was kept, rather than clipped away.
-    fn try_insert_primitive(&mut self, primitive: Primitive) -> bool {
+    fn try_insert_primitive(&mut self, mut primitive: Primitive) -> bool {
         let clipped_bounds = primitive.clipped_bounds();
         if clipped_bounds.is_empty() {
             return false;
@@ -225,13 +218,12 @@ impl Scene {
                 Some(range) if range.end == index => range.end += 1,
                 _ => layer.primitives.push(index..index + 1),
             }
-            self.paint_orderings.push(UNASSIGNED_DRAW_ORDER);
         } else {
             let order = self
                 .primitive_bounds
                 .insert(clipped_bounds, kind, kind.max_shared_kind());
+            primitive.set_order(order);
             self.push_primitive(primitive.clone(), order);
-            self.paint_orderings.push(order);
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
@@ -329,17 +321,12 @@ impl Scene {
         );
 
         let start = self.paint_operations.len();
-        for (operation, ordering) in previous_scene.paint_operations[range.clone()]
-            .iter()
-            .zip(&previous_scene.paint_orderings[range.clone()])
-        {
+        for operation in &previous_scene.paint_operations[range] {
             match operation {
                 PaintOperation::Primitive(primitive) => {
-                    if *ordering == UNASSIGNED_DRAW_ORDER {
-                        return self.replay(range, previous_scene);
-                    }
-                    let ordering = *ordering - extent.low_ordering + base_ordering;
-                    let primitive = self.replayed_primitive(primitive.clone(), previous_scene);
+                    let ordering = primitive.order() - extent.low_ordering + base_ordering;
+                    let mut primitive = self.replayed_primitive(primitive.clone(), previous_scene);
+                    primitive.set_order(ordering);
                     if let Some(&layer_index) = self.layer_stack.last() {
                         let index = self.paint_operations.len();
                         if let Some(layer) = self.layers.get_mut(layer_index) {
@@ -353,7 +340,6 @@ impl Scene {
                     }
                     self.paint_operations
                         .push(PaintOperation::Primitive(primitive));
-                    self.paint_orderings.push(ordering);
                 }
                 PaintOperation::StartLayer => self.push_layer(),
                 PaintOperation::EndLayer => {
@@ -365,14 +351,13 @@ impl Scene {
                                 if let PaintOperation::Primitive(primitive) =
                                     &self.paint_operations[index]
                                 {
-                                    let ordering = self.paint_orderings[index];
+                                    let ordering = primitive.order();
                                     self.push_primitive(primitive.clone(), ordering);
                                 }
                             }
                         }
                     }
                     self.paint_operations.push(PaintOperation::EndLayer);
-                    self.paint_orderings.push(UNASSIGNED_DRAW_ORDER);
                 }
             }
         }
@@ -421,32 +406,26 @@ impl Scene {
         let Some(operations) = self.paint_operations.get(range.clone()) else {
             return Err(());
         };
-        let Some(orderings) = self.paint_orderings.get(range.clone()) else {
-            return Err(());
-        };
 
         let mut bounds: Option<Bounds<ScaledPixels>> = None;
         let mut low_ordering: Option<DrawOrder> = None;
         let mut high_ordering: Option<DrawOrder> = None;
         let mut max_key: Option<Key> = None;
         let mut layer_depth = 0usize;
-        for (operation, ordering) in operations.iter().zip(orderings) {
+        for operation in operations {
             match operation {
                 PaintOperation::Primitive(primitive) => {
-                    if *ordering == UNASSIGNED_DRAW_ORDER {
-                        return Err(());
-                    }
+                    let ordering = primitive.order();
                     let key = Key {
-                        ordering: *ordering,
+                        ordering,
                         kind: primitive.kind(),
                     };
                     bounds = Some(match bounds {
                         Some(bounds) => bounds.union(&primitive.clipped_bounds()),
                         None => primitive.clipped_bounds(),
                     });
-                    low_ordering = Some(low_ordering.map_or(*ordering, |low| low.min(*ordering)));
-                    high_ordering =
-                        Some(high_ordering.map_or(*ordering, |high| high.max(*ordering)));
+                    low_ordering = Some(low_ordering.map_or(ordering, |low| low.min(ordering)));
+                    high_ordering = Some(high_ordering.map_or(ordering, |high| high.max(ordering)));
                     max_key = Some(max_key.map_or(key, |max_key| max_key.max(key)));
                 }
                 PaintOperation::StartLayer => layer_depth += 1,
@@ -731,6 +710,32 @@ impl Primitive {
             Primitive::SubpixelSprite(_) => PrimitiveKind::SubpixelSprite,
             Primitive::PolychromeSprite(_) => PrimitiveKind::PolychromeSprite,
             Primitive::Surface(_) => PrimitiveKind::Surface,
+        }
+    }
+
+    fn order(&self) -> DrawOrder {
+        match self {
+            Primitive::Shadow(shadow) => shadow.order,
+            Primitive::Quad(quad) => quad.order,
+            Primitive::Path(path) => path.order,
+            Primitive::Underline(underline) => underline.order,
+            Primitive::MonochromeSprite(sprite) => sprite.order,
+            Primitive::SubpixelSprite(sprite) => sprite.order,
+            Primitive::PolychromeSprite(sprite) => sprite.order,
+            Primitive::Surface(surface) => surface.order,
+        }
+    }
+
+    fn set_order(&mut self, order: DrawOrder) {
+        match self {
+            Primitive::Shadow(shadow) => shadow.order = order,
+            Primitive::Quad(quad) => quad.order = order,
+            Primitive::Path(path) => path.order = order,
+            Primitive::Underline(underline) => underline.order = order,
+            Primitive::MonochromeSprite(sprite) => sprite.order = order,
+            Primitive::SubpixelSprite(sprite) => sprite.order = order,
+            Primitive::PolychromeSprite(sprite) => sprite.order = order,
+            Primitive::Surface(surface) => surface.order = order,
         }
     }
 
@@ -1637,7 +1642,17 @@ mod tests {
                 expected.pop_layer();
                 actual.pop_layer();
             }
-            assert_eq!(actual.paint_orderings, expected.paint_orderings);
+            let orderings = |scene: &Scene| {
+                scene
+                    .paint_operations
+                    .iter()
+                    .filter_map(|operation| match operation {
+                        PaintOperation::Primitive(primitive) => Some(primitive.order()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(orderings(&actual), orderings(&expected));
             assert_eq!(batch_labels(&mut actual), batch_labels(&mut expected));
         }
     }
