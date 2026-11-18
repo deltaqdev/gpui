@@ -7,6 +7,8 @@ fn main() {
     let target_has_debug_assertions = std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some();
     if target_is_windows && !target_has_debug_assertions {
         compile_shaders();
+    } else {
+        println!("cargo:rerun-if-changed=build.rs");
     }
 }
 
@@ -19,15 +21,11 @@ mod shader_compilation {
     };
 
     pub fn compile_shaders() {
-        let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-        let shader_path = manifest_dir.join("src/shaders.hlsl");
+        let shader_path =
+            PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/shaders.hlsl");
         let out_dir = std::env::var("OUT_DIR").unwrap();
 
         println!("cargo:rerun-if-changed={}", shader_path.display());
-        println!(
-            "cargo:rerun-if-changed={}",
-            manifest_dir.join("src/color_text_raster.hlsl").display()
-        );
         println!("cargo:rerun-if-env-changed=GPUI_FXC_PATH");
 
         // Check if fxc.exe is available
@@ -36,9 +34,9 @@ mod shader_compilation {
         // Define all modules
         let modules = [
             "quad",
+            "opaque_quad",
             "shadow",
-            "path_rasterization",
-            "path_sprite",
+            "path_tile",
             "underline",
             "monochrome_sprite",
             "subpixel_sprite",
@@ -53,17 +51,6 @@ mod shader_compilation {
         for module in modules {
             compile_shader_for_module(
                 module,
-                &out_dir,
-                &fxc_path,
-                shader_path.to_str().unwrap(),
-                &rust_binding_path,
-            );
-        }
-
-        {
-            let shader_path = manifest_dir.join("src/color_text_raster.hlsl");
-            compile_shader_for_module(
-                "emoji_rasterization",
                 &out_dir,
                 &fxc_path,
                 shader_path.to_str().unwrap(),
