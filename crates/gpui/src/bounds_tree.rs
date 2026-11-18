@@ -14,7 +14,7 @@ const MAX_CHILDREN: usize = 12;
 ///
 /// This is an R-tree variant specifically designed for the use case of assigning
 /// z-order to overlapping UI elements. Each bounds has an ordering and a kind;
-/// bounds sharing an ordering are drawn in the order of their kinds. BoundsTreeKey
+/// bounds sharing an ordering are drawn in the order of their kinds. Key
 /// optimizations:
 /// - Tracks the leaf with global max key for O(1) fast-path queries
 /// - Uses higher branching factor (4) for lower tree height
@@ -45,7 +45,7 @@ where
     /// Bounding box containing this node and all descendants.
     bounds: Bounds<U>,
     /// Maximum key in this subtree.
-    max_key: BoundsTreeKey,
+    max_key: Key,
     /// Node-specific data.
     kind: NodeKind,
 }
@@ -53,7 +53,7 @@ where
 /// The ordering of a bounds, then its kind, which orders the bounds that share
 /// an ordering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct BoundsTreeKey {
+pub(crate) struct Key {
     pub(crate) ordering: u32,
     pub(crate) kind: PrimitiveKind,
 }
@@ -61,7 +61,7 @@ pub(crate) struct BoundsTreeKey {
 #[derive(Debug, Clone)]
 enum NodeKind {
     /// Leaf node containing actual bounds data.
-    Leaf { key: BoundsTreeKey },
+    Leaf { key: Key },
     /// Internal node with children.
     Internal {
         /// Indices of child nodes (2 to MAX_CHILDREN).
@@ -138,12 +138,12 @@ where
             Some(max_key) if max_key.kind <= max_shared_kind => max_key.ordering,
             Some(max_key) => max_key.ordering + 1,
         };
-        self.insert_with_key(new_bounds, BoundsTreeKey { ordering, kind });
+        self.insert_with_key(new_bounds, Key { ordering, kind });
         ordering
     }
 
     /// Inserts bounds with a preassigned draw key.
-    pub(crate) fn insert_with_key(&mut self, bounds: Bounds<U>, key: BoundsTreeKey) {
+    pub(crate) fn insert_with_key(&mut self, bounds: Bounds<U>, key: Key) {
         let new_leaf_idx = self.insert_leaf(bounds, key);
         self.max_leaf = match self.max_leaf {
             None => Some(new_leaf_idx),
@@ -153,7 +153,7 @@ where
     }
 
     /// Finds the maximum key among all bounds that intersect with the query.
-    pub(crate) fn max_key_intersecting(&mut self, query: &Bounds<U>) -> Option<BoundsTreeKey> {
+    pub(crate) fn max_key_intersecting(&mut self, query: &Bounds<U>) -> Option<Key> {
         let root_idx = self.root?;
 
         // Fast path: check if the max-key leaf intersects
@@ -210,7 +210,7 @@ where
 
     /// Inserts a leaf node with the given bounds and key.
     /// Returns the index of the new leaf.
-    fn insert_leaf(&mut self, bounds: Bounds<U>, key: BoundsTreeKey) -> usize {
+    fn insert_leaf(&mut self, bounds: Bounds<U>, key: Key) -> usize {
         let new_leaf_idx = self.nodes.len();
         self.nodes.push(Node {
             bounds: bounds.clone(),
@@ -464,7 +464,7 @@ mod tests {
         for seed in 1..=1_000 {
             let mut tree = BoundsTree::default();
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-            let mut expected_bounds: Vec<(Bounds<f32>, BoundsTreeKey)> = Vec::new();
+            let mut expected_bounds: Vec<(Bounds<f32>, Key)> = Vec::new();
 
             for _ in 0..max_bounds {
                 let query = Bounds {
@@ -484,7 +484,7 @@ mod tests {
                     .max();
                 assert_eq!(tree.max_key_intersecting(&query), expected_max_key);
 
-                let key = BoundsTreeKey {
+                let key = Key {
                     ordering: rng.random_range(1..=max_bounds as u32),
                     kind: kinds[rng.random_range(0..kinds.len())],
                 };
