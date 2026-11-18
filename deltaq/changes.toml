@@ -20,6 +20,9 @@
 
 
 
+
+
+
 [[change]]
 name = "http-client-async-std-unstable"
 kind = "own"
@@ -74,4 +77,12 @@ kind = "own"
 zed_pr = 0
 head_sha = ""
 files = ["crates/gpui/Cargo.toml", "crates/gpui/examples/surface_framebuffer.rs", "crates/gpui_apple/src/metal_renderer.rs", "crates/gpui_apple/src/shaders.metal"]
+status = "tracking"
+
+[[change]]
+name = "cached-replay-bounds"
+kind = "own"
+zed_pr = 0
+head_sha = ""
+files = ["crates/gpui/src/bounds_tree.rs", "crates/gpui/src/scene.rs", "crates/gpui/src/scene/replay_multi_view_tests.rs", "crates/gpui/src/scene/replay_oracle.rs", "crates/gpui/src/window.rs", "crates/gpui/src/window/cached_replay_tests.rs", "crates/gpui_platform/Cargo.toml", "crates/gpui_platform/benches/scene_replay.rs"]
 status = "tracking"

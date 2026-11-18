@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Path,
     PathTiles, Pixels, Point, Radians, ScaledPixels, Size, TimedTransformation,
-    bounds_tree::BoundsTree,
+    bounds_tree::{BoundsTree, Key},
 };
 use smallvec::SmallVec;
 use std::{
@@ -45,10 +45,22 @@ struct Layer {
     max_shared_kind: PrimitiveKind,
 }
 
+struct ReplayExtent {
+    start: usize,
+    end: usize,
+    bounds: Bounds<ScaledPixels>,
+    low_ordering: DrawOrder,
+    high_ordering: DrawOrder,
+    max_key: Key,
+    bottom_max_shared_kind: PrimitiveKind,
+    unit_count: usize,
+}
+
 #[derive(Default)]
 #[expect(missing_docs)]
 pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
+    replay_extents: Vec<ReplayExtent>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<usize>,
     layers: VecDeque<Layer>,
@@ -67,6 +79,7 @@ pub struct Scene {
 impl Scene {
     pub fn clear(&mut self) {
         self.paint_operations.clear();
+        self.replay_extents.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
         self.layers.clear();
@@ -127,6 +140,10 @@ impl Scene {
         self.paint_operations.len()
     }
 
+    pub(crate) fn layer_depth(&self) -> usize {
+        self.layer_stack.len()
+    }
+
     /// Returns whether the scene contains no drawable primitives.
     ///
     /// A scene may have paint operations that only open and close empty layers,
@@ -172,7 +189,8 @@ impl Scene {
             self.primitive_bounds
                 .insert(layer.bounds, layer.max_kind, layer.max_shared_kind);
         for index in layer.primitives.into_iter().flatten() {
-            if let PaintOperation::Primitive(primitive) = &self.paint_operations[index] {
+            if let PaintOperation::Primitive(primitive) = &mut self.paint_operations[index] {
+                primitive.set_order(order);
                 let primitive = primitive.clone();
                 self.push_primitive(primitive, order);
             }
@@ -184,7 +202,7 @@ impl Scene {
     }
 
     /// Returns whether the primitive was kept, rather than clipped away.
-    fn try_insert_primitive(&mut self, primitive: Primitive) -> bool {
+    fn try_insert_primitive(&mut self, mut primitive: Primitive) -> bool {
         let clipped_bounds = primitive.clipped_bounds();
         if clipped_bounds.is_empty() {
             return false;
@@ -206,6 +224,7 @@ impl Scene {
             let order = self
                 .primitive_bounds
                 .insert(clipped_bounds, kind, kind.max_shared_kind());
+            primitive.set_order(order);
             self.push_primitive(primitive.clone(), order);
         }
         self.paint_operations
@@ -258,6 +277,219 @@ impl Scene {
                 PaintOperation::EndLayer => self.pop_layer(),
             }
         }
+    }
+
+    /// Replays a balanced, top-level range with one bounds-tree insertion.
+    ///
+    /// `recorded_layer_depth` is the source scene's layer depth at `range.start`.
+    /// If it is nonzero, this scene has an open layer, or the range has unbalanced
+    /// layers, this falls back to [`Self::replay`]. It is not checked: a range
+    /// recorded inside a layer but passed as depth 0 is replayed as if its layer's
+    /// primitives were top-level, and can draw overlapping primitives out of order.
+    pub fn replay_with_one_insert(
+        &mut self,
+        range: Range<usize>,
+        previous_scene: &Scene,
+        recorded_layer_depth: usize,
+    ) {
+        if range.is_empty() {
+            return;
+        }
+        if recorded_layer_depth != 0 || !self.layer_stack.is_empty() {
+            return self.replay(range, previous_scene);
+        }
+
+        let extent = match previous_scene.replay_extent(&range) {
+            Some(extent) => ReplayExtent {
+                start: range.start,
+                end: range.end,
+                bounds: extent.bounds,
+                low_ordering: extent.low_ordering,
+                high_ordering: extent.high_ordering,
+                max_key: extent.max_key,
+                bottom_max_shared_kind: extent.bottom_max_shared_kind,
+                unit_count: extent.unit_count,
+            },
+            None => match previous_scene.measure_replay(&range) {
+                Ok(Some(extent)) => extent,
+                Ok(None) | Err(()) => return self.replay(range, previous_scene),
+            },
+        };
+
+        // One unit already takes one insert, with tighter bounds.
+        if extent.unit_count < 2 {
+            return self.replay(range, previous_scene);
+        }
+
+        let base_ordering = match self.primitive_bounds.max_key_intersecting(&extent.bounds) {
+            Some(key) if key.kind <= extent.bottom_max_shared_kind => key.ordering,
+            Some(key) => key.ordering + 1,
+            None => 1,
+        };
+        let last_ordering = extent.high_ordering - extent.low_ordering + base_ordering;
+        self.primitive_bounds.insert_with_key(
+            extent.bounds,
+            Key {
+                ordering: last_ordering,
+                kind: extent.max_key.kind,
+            },
+        );
+
+        let start = self.paint_operations.len();
+        for operation in &previous_scene.paint_operations[range] {
+            match operation {
+                PaintOperation::Primitive(primitive) => {
+                    let ordering = primitive.order() - extent.low_ordering + base_ordering;
+                    let mut primitive = self.replayed_primitive(primitive.clone(), previous_scene);
+                    primitive.set_order(ordering);
+                    if let Some(&layer_index) = self.layer_stack.last() {
+                        let index = self.paint_operations.len();
+                        if let Some(layer) = self.layers.get_mut(layer_index) {
+                            match layer.primitives.last_mut() {
+                                Some(range) if range.end == index => range.end += 1,
+                                _ => layer.primitives.push(index..index + 1),
+                            }
+                        }
+                    } else {
+                        self.push_primitive(primitive.clone(), ordering);
+                    }
+                    self.paint_operations
+                        .push(PaintOperation::Primitive(primitive));
+                }
+                PaintOperation::StartLayer => self.push_layer(),
+                PaintOperation::EndLayer => {
+                    self.layer_stack.pop();
+                    if self.layer_stack.is_empty() {
+                        // Equal keys retain the parent-before-child insertion order.
+                        while let Some(layer) = self.layers.pop_front() {
+                            for index in layer.primitives.into_iter().flatten() {
+                                if let PaintOperation::Primitive(primitive) =
+                                    &self.paint_operations[index]
+                                {
+                                    let ordering = primitive.order();
+                                    self.push_primitive(primitive.clone(), ordering);
+                                }
+                            }
+                        }
+                    }
+                    self.paint_operations.push(PaintOperation::EndLayer);
+                }
+            }
+        }
+        self.replay_extents.push(ReplayExtent {
+            start,
+            end: self.paint_operations.len(),
+            bounds: extent.bounds,
+            low_ordering: base_ordering,
+            high_ordering: last_ordering,
+            max_key: Key {
+                ordering: last_ordering,
+                kind: extent.max_key.kind,
+            },
+            bottom_max_shared_kind: extent.bottom_max_shared_kind,
+            unit_count: extent.unit_count,
+        });
+    }
+
+    fn replayed_primitive(
+        &mut self,
+        mut primitive: Primitive,
+        previous_scene: &Scene,
+    ) -> Primitive {
+        if let Primitive::MonochromeSprite(sprite) = &mut primitive
+            && let Some(mut animation) = previous_scene
+                .animations
+                .get(sprite.animation.0 as usize)
+                .copied()
+        {
+            sprite.animation = SpriteAnimationId(self.animations.len() as u32);
+            animation.base_color = sprite.color;
+            self.animations.push(animation);
+        }
+        primitive
+    }
+
+    fn replay_extent(&self, range: &Range<usize>) -> Option<&ReplayExtent> {
+        let index = self
+            .replay_extents
+            .binary_search_by_key(&range.start, |extent| extent.start)
+            .ok()?;
+        self.replay_extents
+            .get(index)
+            .filter(|extent| extent.end == range.end)
+    }
+
+    fn measure_replay(&self, range: &Range<usize>) -> Result<Option<ReplayExtent>, ()> {
+        let Some(operations) = self.paint_operations.get(range.clone()) else {
+            return Err(());
+        };
+
+        let mut bounds: Option<Bounds<ScaledPixels>> = None;
+        let mut low_ordering: Option<DrawOrder> = None;
+        let mut high_ordering: Option<DrawOrder> = None;
+        let mut max_key: Option<Key> = None;
+        let mut bottom_max_shared_kind = PrimitiveKind::Surface;
+        let mut unit_count = 0;
+        let mut layer_has_primitives = SmallVec::<[bool; 4]>::new();
+        for operation in operations {
+            match operation {
+                PaintOperation::Primitive(primitive) => {
+                    match layer_has_primitives.last_mut() {
+                        Some(has_primitives) if !*has_primitives => {
+                            *has_primitives = true;
+                            unit_count += 1;
+                        }
+                        None => unit_count += 1,
+                        _ => {}
+                    }
+                    let ordering = primitive.order();
+                    let key = Key {
+                        ordering,
+                        kind: primitive.kind(),
+                    };
+                    bounds = Some(match bounds {
+                        Some(bounds) => bounds.union(&primitive.clipped_bounds()),
+                        None => primitive.clipped_bounds(),
+                    });
+                    match low_ordering {
+                        Some(low) if low < ordering => {}
+                        Some(low) if low == ordering => {
+                            bottom_max_shared_kind =
+                                bottom_max_shared_kind.min(key.kind.max_shared_kind());
+                        }
+                        _ => {
+                            low_ordering = Some(ordering);
+                            bottom_max_shared_kind = key.kind.max_shared_kind();
+                        }
+                    }
+                    high_ordering = Some(high_ordering.map_or(ordering, |high| high.max(ordering)));
+                    max_key = Some(max_key.map_or(key, |max_key| max_key.max(key)));
+                }
+                PaintOperation::StartLayer => layer_has_primitives.push(false),
+                PaintOperation::EndLayer => {
+                    layer_has_primitives.pop().ok_or(())?;
+                }
+            }
+        }
+        if !layer_has_primitives.is_empty() {
+            return Err(());
+        }
+        Ok(bounds
+            .zip(low_ordering)
+            .zip(high_ordering)
+            .zip(max_key)
+            .map(
+                |(((bounds, low_ordering), high_ordering), max_key)| ReplayExtent {
+                    start: range.start,
+                    end: range.end,
+                    bounds,
+                    low_ordering,
+                    high_ordering,
+                    max_key,
+                    bottom_max_shared_kind,
+                    unit_count,
+                },
+            ))
     }
 
     /// Replays a range as a self-contained scene, restoring any layers that
@@ -517,6 +749,32 @@ impl Primitive {
             Primitive::SubpixelSprite(_) => PrimitiveKind::SubpixelSprite,
             Primitive::PolychromeSprite(_) => PrimitiveKind::PolychromeSprite,
             Primitive::Surface(_) => PrimitiveKind::Surface,
+        }
+    }
+
+    fn order(&self) -> DrawOrder {
+        match self {
+            Primitive::Shadow(shadow) => shadow.order,
+            Primitive::Quad(quad) => quad.order,
+            Primitive::Path(path) => path.order,
+            Primitive::Underline(underline) => underline.order,
+            Primitive::MonochromeSprite(sprite) => sprite.order,
+            Primitive::SubpixelSprite(sprite) => sprite.order,
+            Primitive::PolychromeSprite(sprite) => sprite.order,
+            Primitive::Surface(surface) => surface.order,
+        }
+    }
+
+    fn set_order(&mut self, order: DrawOrder) {
+        match self {
+            Primitive::Shadow(shadow) => shadow.order = order,
+            Primitive::Quad(quad) => quad.order = order,
+            Primitive::Path(path) => path.order = order,
+            Primitive::Underline(underline) => underline.order = order,
+            Primitive::MonochromeSprite(sprite) => sprite.order = order,
+            Primitive::SubpixelSprite(sprite) => sprite.order = order,
+            Primitive::PolychromeSprite(sprite) => sprite.order = order,
+            Primitive::Surface(surface) => surface.order = order,
         }
     }
 
@@ -1365,7 +1623,264 @@ mod tests {
         scene.pop_layer();
         assert_eq!(batch_labels(&mut scene), ["underlines (1)", "quads (1)"]);
     }
+
+    fn oracle_operation(kind: replay_oracle::Kind, identity: u32, x: f32) -> replay_oracle::Op {
+        replay_oracle::Op::Primitive {
+            kind,
+            id: identity,
+            bounds: square(x),
+            content_mask: square(x),
+            texture: 0,
+        }
+    }
+
+    #[test]
+    fn one_insert_replay_bottom_quads_share_with_a_prefix_shadow() {
+        use replay_oracle::{Kind, draw_order_mismatch, paint};
+
+        let prefix = [
+            oracle_operation(Kind::Shadow, 1, 0.),
+            oracle_operation(Kind::Quad, 2, 30.),
+            oracle_operation(Kind::Underline, 3, 30.),
+        ];
+        let view = [
+            oracle_operation(Kind::Quad, 4, 0.),
+            oracle_operation(Kind::Quad, 5, 2.),
+        ];
+        let mut recorded = Scene::default();
+        paint(&mut recorded, &view);
+        recorded.finish();
+        let mut expected = Scene::default();
+        paint(&mut expected, &prefix);
+        paint(&mut expected, &view);
+        expected.finish();
+        let mut actual = Scene::default();
+        paint(&mut actual, &prefix);
+        actual.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        actual.finish();
+
+        assert!(actual.quads.iter().all(|quad| quad.order == 1));
+        assert_eq!(actual.batches().count(), 3);
+        assert_eq!(draw_order_mismatch(&expected, &actual), None);
+    }
+
+    #[test]
+    fn one_insert_replay_bottom_shadows_do_not_share_with_a_prefix_quad() {
+        use replay_oracle::{Kind, draw_order_mismatch, paint};
+
+        let prefix = [oracle_operation(Kind::Quad, 1, 0.)];
+        let view = [
+            oracle_operation(Kind::Shadow, 2, 0.),
+            oracle_operation(Kind::Shadow, 3, 2.),
+        ];
+        let mut recorded = Scene::default();
+        paint(&mut recorded, &view);
+        recorded.finish();
+        let mut expected = Scene::default();
+        paint(&mut expected, &prefix);
+        paint(&mut expected, &view);
+        expected.finish();
+        let mut actual = Scene::default();
+        paint(&mut actual, &prefix);
+        actual.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        actual.finish();
+
+        assert!(actual.shadows.iter().all(|shadow| shadow.order == 2));
+        assert_eq!(draw_order_mismatch(&expected, &actual), None);
+    }
+
+    #[test]
+    fn one_insert_replay_preserves_nested_layer_ties() {
+        let mut recorded = Scene::default();
+        recorded.push_layer();
+        recorded.push_layer();
+        recorded.insert_primitive(quad(5.));
+        recorded.pop_layer();
+        recorded.insert_primitive(quad(8.));
+        recorded.pop_layer();
+        recorded.finish();
+        assert_eq!(recorded.quads[0].order, recorded.quads[1].order);
+        assert_eq!(recorded.quads[0].bounds, square(8.));
+
+        let mut replayed = Scene::default();
+        replayed.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        assert!(replayed.replay_extent(&(0..replayed.len())).is_some());
+        replayed.finish();
+        assert_eq!(
+            replayed
+                .quads
+                .iter()
+                .map(|quad| quad.bounds)
+                .collect::<Vec<_>>(),
+            recorded
+                .quads
+                .iter()
+                .map(|quad| quad.bounds)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn one_insert_replay_uses_per_operation_replay_for_one_unit() {
+        let mut primitive = Scene::default();
+        primitive.insert_primitive(quad(0.));
+        let mut layered = Scene::default();
+        layered.push_layer();
+        layered.insert_primitive(quad(0.));
+        layered.push_layer();
+        layered.pop_layer();
+        layered.insert_primitive(quad(5.));
+        layered.pop_layer();
+
+        for recorded in [primitive, layered] {
+            let range = 0..recorded.len();
+            assert!(matches!(
+                recorded.measure_replay(&range),
+                Ok(Some(ReplayExtent { unit_count: 1, .. }))
+            ));
+            let mut actual = Scene::default();
+            let mut expected = Scene::default();
+            actual.insert_primitive(underline(0.));
+            expected.insert_primitive(underline(0.));
+            actual.replay_with_one_insert(range.clone(), &recorded, 0);
+            expected.replay(range, &recorded);
+            assert!(actual.replay_extents.is_empty());
+            assert_eq!(actual.len(), expected.len());
+            assert_eq!(batch_labels(&mut actual), batch_labels(&mut expected));
+            assert_eq!(
+                actual
+                    .quads
+                    .iter()
+                    .map(|quad| quad.order)
+                    .collect::<Vec<_>>(),
+                expected
+                    .quads
+                    .iter()
+                    .map(|quad| quad.order)
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn one_insert_replay_skips_empty_ranges_and_preserves_empty_layers() {
+        let mut recorded = Scene::default();
+        recorded.push_layer();
+        recorded.pop_layer();
+        let mut replayed = Scene::default();
+        replayed.replay_with_one_insert(0..0, &recorded, 0);
+        assert_eq!(replayed.len(), 0);
+        replayed.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        assert_eq!(replayed.len(), recorded.len());
+        assert!(replayed.is_empty());
+        assert!(replayed.replay_extents.is_empty());
+    }
+
+    #[test]
+    fn one_insert_replay_falls_back_for_layer_boundaries() {
+        let mut recorded = Scene::default();
+        recorded.push_layer();
+        recorded.insert_primitive(quad(0.));
+        recorded.pop_layer();
+
+        for (range, recorded_layer_depth, destination_layer) in [
+            (1..2, 1, false),
+            (0..recorded.len(), 0, true),
+            (0..2, 0, false),
+            (1..3, 0, false),
+        ] {
+            let mut expected = Scene::default();
+            let mut actual = Scene::default();
+            if destination_layer {
+                expected.push_layer();
+                actual.push_layer();
+            }
+            expected.replay(range.clone(), &recorded);
+            actual.replay_with_one_insert(range, &recorded, recorded_layer_depth);
+            assert!(actual.replay_extents.is_empty());
+            assert_eq!(actual.layer_stack, expected.layer_stack);
+            while !expected.layer_stack.is_empty() {
+                expected.pop_layer();
+                actual.pop_layer();
+            }
+            let orderings = |scene: &Scene| {
+                scene
+                    .paint_operations
+                    .iter()
+                    .filter_map(|operation| match operation {
+                        PaintOperation::Primitive(primitive) => Some(primitive.order()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(orderings(&actual), orderings(&expected));
+            assert_eq!(batch_labels(&mut actual), batch_labels(&mut expected));
+        }
+    }
+
+    #[test]
+    fn one_insert_replay_memo_only_matches_the_exact_range() {
+        let mut recorded = Scene::default();
+        recorded.insert_primitive(quad(0.));
+        recorded.insert_primitive(quad(5.));
+        let mut replayed = Scene::default();
+        replayed.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        assert!(replayed.replay_extent(&(0..replayed.len())).is_some());
+        assert!(replayed.replay_extent(&(0..1)).is_none());
+        let mut partial = Scene::default();
+        partial.replay_with_one_insert(0..1, &replayed, 0);
+        assert_eq!(partial.quads.len(), 1);
+        assert_eq!(partial.quads[0].bounds, square(0.));
+        replayed.clear();
+        assert!(replayed.replay_extents.is_empty());
+    }
+
+    #[test]
+    fn one_insert_replay_draws_like_a_full_render() {
+        use super::replay_oracle::{ReplayCase, ScriptShape, draw_order_mismatch};
+        use rand::{SeedableRng as _, rngs::StdRng};
+
+        let shapes = [
+            ScriptShape {
+                primitives: 40,
+                max_layer_depth: 0,
+                clip_chance: 0.,
+            },
+            ScriptShape {
+                primitives: 120,
+                max_layer_depth: 3,
+                clip_chance: 0.2,
+            },
+        ];
+        for seed in 0..1_000 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let case = ReplayCase::random(&mut rng, shapes[seed as usize % shapes.len()]);
+            let mut replayed_range = 0..0;
+            let replayed = case.replayed(|scene, range, recorded| {
+                let start = scene.len();
+                scene.replay_with_one_insert(range, recorded, 0);
+                replayed_range = start..scene.len();
+                assert!(scene.replay_extent(&replayed_range).is_some());
+            });
+            let replayed_again = case.replayed(|scene, _, _| {
+                scene.replay_with_one_insert(replayed_range, &replayed, 0);
+            });
+            let rendered = case.rendered();
+            if let Some(mismatch) = draw_order_mismatch(&rendered, &replayed) {
+                panic!("seed {seed}, first replay: {mismatch}");
+            }
+            if let Some(mismatch) = draw_order_mismatch(&rendered, &replayed_again) {
+                panic!("seed {seed}, second replay: {mismatch}");
+            }
+        }
+    }
 }
+
+#[cfg(test)]
+mod replay_oracle;
+
+#[cfg(test)]
+mod replay_multi_view_tests;
 
 #[cfg(test)]
 mod composition_replay_tests {

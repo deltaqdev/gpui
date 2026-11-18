@@ -53,9 +53,9 @@ where
 /// The ordering of a bounds, then its kind, which orders the bounds that share
 /// an ordering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Key {
-    ordering: u32,
-    kind: PrimitiveKind,
+pub(crate) struct Key {
+    pub(crate) ordering: u32,
+    pub(crate) kind: PrimitiveKind,
 }
 
 #[derive(Debug, Clone)]
@@ -133,28 +133,27 @@ where
         kind: PrimitiveKind,
         max_shared_kind: PrimitiveKind,
     ) -> u32 {
-        let ordering = match self.find_max_key(&new_bounds) {
+        let ordering = match self.max_key_intersecting(&new_bounds) {
             None => 1,
             Some(max_key) if max_key.kind <= max_shared_kind => max_key.ordering,
             Some(max_key) => max_key.ordering + 1,
         };
-        let key = Key { ordering, kind };
+        self.insert_with_key(new_bounds, Key { ordering, kind });
+        ordering
+    }
 
-        // Insert the new leaf
-        let new_leaf_idx = self.insert_leaf(new_bounds, key);
-
-        // Update max_leaf tracking
+    /// Inserts bounds with a preassigned draw key.
+    pub(crate) fn insert_with_key(&mut self, bounds: Bounds<U>, key: Key) {
+        let new_leaf_idx = self.insert_leaf(bounds, key);
         self.max_leaf = match self.max_leaf {
             None => Some(new_leaf_idx),
             Some(old_idx) if self.nodes[old_idx].max_key < key => Some(new_leaf_idx),
             some => some,
         };
-
-        ordering
     }
 
     /// Finds the maximum key among all bounds that intersect with the query.
-    fn find_max_key(&mut self, query: &Bounds<U>) -> Option<Key> {
+    pub(crate) fn max_key_intersecting(&mut self, query: &Bounds<U>) -> Option<Key> {
         let root_idx = self.root?;
 
         // Fast path: check if the max-key leaf intersects
@@ -450,6 +449,49 @@ mod tests {
         assert_eq!(tree.insert(bounds4, quad, shadow), 1); // bounds4 does not overlap with bounds1, bounds2, or bounds3
         assert_eq!(tree.insert(bounds5, quad, shadow), 1); // bounds5 does not overlap with any other bounds
         assert_eq!(tree.insert(bounds6, quad, shadow), 2); // bounds6 overlaps with bounds4, so it should have a different order
+    }
+
+    #[test]
+    fn test_max_key_intersecting_and_insert_with_key() {
+        let max_bounds = 100;
+        let kinds = [
+            PrimitiveKind::Shadow,
+            PrimitiveKind::Quad,
+            PrimitiveKind::Path,
+            PrimitiveKind::Underline,
+        ];
+
+        for seed in 1..=1_000 {
+            let mut tree = BoundsTree::default();
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            let mut expected_bounds: Vec<(Bounds<f32>, Key)> = Vec::new();
+
+            for _ in 0..max_bounds {
+                let query = Bounds {
+                    origin: Point {
+                        x: rng.random_range(-100.0..100.0),
+                        y: rng.random_range(-100.0..100.0),
+                    },
+                    size: Size {
+                        width: rng.random_range(0.0..50.0),
+                        height: rng.random_range(0.0..50.0),
+                    },
+                };
+                let expected_max_key = expected_bounds
+                    .iter()
+                    .filter(|(bounds, _)| bounds.intersects(&query))
+                    .map(|(_, key)| *key)
+                    .max();
+                assert_eq!(tree.max_key_intersecting(&query), expected_max_key);
+
+                let key = Key {
+                    ordering: rng.random_range(1..=max_bounds as u32),
+                    kind: kinds[rng.random_range(0..kinds.len())],
+                };
+                tree.insert_with_key(query, key);
+                expected_bounds.push((query, key));
+            }
+        }
     }
 
     #[test]

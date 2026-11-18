@@ -52,6 +52,11 @@ name = "primitives"
 harness = false
 required-features = ["bench-support"]
 
+[[bench]]
+name = "scene_replay"
+harness = false
+required-features = ["bench-support"]
+
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true
