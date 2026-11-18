@@ -431,6 +431,25 @@ mod tests {
         scene.replay(range, recorded);
     }
 
+    /// Replays as `Window::reuse_paint` must: passing the depth of the layers
+    /// open where the range was recorded.
+    fn one_insert_replay(scene: &mut Scene, range: Range<usize>, recorded: &Scene) {
+        let mut depth = 0usize;
+        for operation in &recorded.paint_operations[..range.start] {
+            match operation {
+                PaintOperation::StartLayer => depth += 1,
+                PaintOperation::EndLayer => depth -= 1,
+                PaintOperation::Primitive(_) => {}
+            }
+        }
+        scene.replay_with_one_insert(range, recorded, depth);
+    }
+
+    const REPLAYS: [(&str, Replay); 2] = [
+        ("per-operation", per_operation_replay),
+        ("one-insert", one_insert_replay),
+    ];
+
     fn square(id: u32, x: f32) -> Op {
         let bounds = Bounds {
             origin: point(ScaledPixels(x), ScaledPixels(0.)),
@@ -682,7 +701,13 @@ mod tests {
             view,
             after: Vec::new(),
         };
-        assert_case(&case, per_operation_replay, "equal-key nested layers");
+        for (name, replay) in REPLAYS {
+            assert_case(
+                &case,
+                replay,
+                format_args!("{name}: {}", "equal-key nested layers"),
+            );
+        }
     }
 
     #[test]
@@ -699,7 +724,13 @@ mod tests {
             if seed % 2 == 0 {
                 case.before.clear();
             }
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 
@@ -707,7 +738,13 @@ mod tests {
     fn replay_oracle_animated_sprite_cases() {
         for seed in 250..500 {
             let case = animated_case(seed);
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 
@@ -715,7 +752,13 @@ mod tests {
     fn replay_oracle_ranges_recorded_inside_layers() {
         for seed in 500..750 {
             let case = layered_case(seed, false);
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 
@@ -723,15 +766,25 @@ mod tests {
     fn replay_oracle_ranges_replayed_inside_layers() {
         for seed in 750..1000 {
             let case = layered_case(seed, true);
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 
     #[test]
     fn replay_oracle_replays_of_replays() {
         for seed in 1000..1250 {
-            repeated_replay_case(seed, 2, per_operation_replay);
-            repeated_replay_case(seed, 3, per_operation_replay);
+            for (_, replay) in REPLAYS {
+                repeated_replay_case(seed, 2, replay);
+            }
+            for (_, replay) in REPLAYS {
+                repeated_replay_case(seed, 3, replay);
+            }
         }
     }
 
@@ -748,7 +801,13 @@ mod tests {
             );
             case.range = 0..0;
             case.view.clear();
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 
@@ -757,7 +816,13 @@ mod tests {
         for seed in 1500..1750 {
             let mut case = all_kinds_shared_order_case(seed);
             case.before.extend(case.before.clone());
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 
@@ -765,7 +830,13 @@ mod tests {
     fn replay_oracle_all_kinds_sharing_orderings() {
         for seed in 1750..2000 {
             let case = all_kinds_shared_order_case(seed);
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 
@@ -773,7 +844,13 @@ mod tests {
     fn replay_oracle_heavy_clipping_cases() {
         for seed in 2000..2250 {
             let case = heavily_clipped_case(seed);
-            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+            for (name, replay) in REPLAYS {
+                assert_case(
+                    &case,
+                    replay,
+                    format_args!("{name}: {}", format_args!("seed {seed}")),
+                );
+            }
         }
     }
 }
