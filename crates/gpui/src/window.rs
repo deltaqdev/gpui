@@ -8828,6 +8828,9 @@ fn with_element_arena_erased(callback: &mut dyn FnMut(&mut Arena)) -> Result<(),
 }
 
 #[cfg(test)]
+mod cached_replay_tests;
+
+#[cfg(test)]
 mod tests {
     use std::any::Any;
     use std::{
