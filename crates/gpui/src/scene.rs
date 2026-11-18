@@ -1368,6 +1368,9 @@ mod tests {
 }
 
 #[cfg(test)]
+mod replay_oracle;
+
+#[cfg(test)]
 mod composition_replay_tests {
     use super::*;
     use crate::{AtlasTextureKind, TileId};
