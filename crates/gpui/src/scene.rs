@@ -49,6 +49,7 @@ struct Layer {
 #[expect(missing_docs)]
 pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
+    paint_orderings: Vec<Option<DrawOrder>>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<usize>,
     layers: VecDeque<Layer>,
@@ -67,6 +68,7 @@ pub struct Scene {
 impl Scene {
     pub fn clear(&mut self) {
         self.paint_operations.clear();
+        self.paint_orderings.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
         self.layers.clear();
@@ -152,6 +154,7 @@ impl Scene {
             max_shared_kind: PrimitiveKind::Surface,
         });
         self.paint_operations.push(PaintOperation::StartLayer);
+        self.paint_orderings.push(None);
     }
 
     pub fn pop_layer(&mut self) {
@@ -162,6 +165,7 @@ impl Scene {
             }
         }
         self.paint_operations.push(PaintOperation::EndLayer);
+        self.paint_orderings.push(None);
     }
 
     fn insert_layer(&mut self, layer: Layer) {
@@ -174,6 +178,7 @@ impl Scene {
         for index in layer.primitives.into_iter().flatten() {
             if let PaintOperation::Primitive(primitive) = &self.paint_operations[index] {
                 let primitive = primitive.clone();
+                self.paint_orderings[index] = Some(order);
                 self.push_primitive(primitive, order);
             }
         }
@@ -202,11 +207,13 @@ impl Scene {
                 Some(range) if range.end == index => range.end += 1,
                 _ => layer.primitives.push(index..index + 1),
             }
+            self.paint_orderings.push(None);
         } else {
             let order = self
                 .primitive_bounds
                 .insert(clipped_bounds, kind, kind.max_shared_kind());
             self.push_primitive(primitive.clone(), order);
+            self.paint_orderings.push(Some(order));
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
