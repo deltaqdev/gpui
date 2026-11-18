@@ -650,6 +650,42 @@ mod tests {
     }
 
     #[test]
+    fn replay_oracle_equal_keys_preserve_layer_push_order() {
+        let view = vec![
+            Op::StartLayer,
+            Op::StartLayer,
+            square(1, 0.),
+            Op::EndLayer,
+            square(2, 5.),
+            Op::EndLayer,
+        ];
+        let recorded = finished(&view);
+        assert_eq!(recorded.quads.len(), 2);
+        assert!(
+            recorded
+                .quads
+                .windows(2)
+                .all(|pair| pair[0].order == pair[1].order)
+        );
+        assert_eq!(
+            draw_sequence(&recorded)
+                .iter()
+                .map(|drawn| drawn.id)
+                .collect::<Vec<_>>(),
+            [2, 1],
+            "equal-key quads retain the outer-first layer flush order",
+        );
+        let case = ReplayCase {
+            range: 0..recorded.len(),
+            recorded,
+            before: Vec::new(),
+            view,
+            after: Vec::new(),
+        };
+        assert_case(&case, per_operation_replay, "equal-key nested layers");
+    }
+
+    #[test]
     fn replay_oracle_random_and_no_prefix_cases() {
         for seed in 0..250 {
             let mut case = random_case(
