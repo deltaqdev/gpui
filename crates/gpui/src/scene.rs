@@ -52,6 +52,7 @@ struct ReplayExtent {
     low_ordering: DrawOrder,
     high_ordering: DrawOrder,
     max_key: Key,
+    bottom_max_shared_kind: PrimitiveKind,
 }
 
 #[derive(Default)]
@@ -300,6 +301,7 @@ impl Scene {
                 low_ordering: extent.low_ordering,
                 high_ordering: extent.high_ordering,
                 max_key: extent.max_key,
+                bottom_max_shared_kind: extent.bottom_max_shared_kind,
             },
             None => match previous_scene.measure_replay(&range) {
                 Ok(Some(extent)) => extent,
@@ -307,10 +309,11 @@ impl Scene {
             },
         };
 
-        let base_ordering = self
-            .primitive_bounds
-            .max_key_intersecting(&extent.bounds)
-            .map_or(1, |key| key.ordering + 1);
+        let base_ordering = match self.primitive_bounds.max_key_intersecting(&extent.bounds) {
+            Some(key) if key.kind <= extent.bottom_max_shared_kind => key.ordering,
+            Some(key) => key.ordering + 1,
+            None => 1,
+        };
         let last_ordering = extent.high_ordering - extent.low_ordering + base_ordering;
         self.primitive_bounds.insert_with_key(
             extent.bounds,
@@ -371,6 +374,7 @@ impl Scene {
                 ordering: last_ordering,
                 kind: extent.max_key.kind,
             },
+            bottom_max_shared_kind: extent.bottom_max_shared_kind,
         });
     }
 
@@ -411,6 +415,7 @@ impl Scene {
         let mut low_ordering: Option<DrawOrder> = None;
         let mut high_ordering: Option<DrawOrder> = None;
         let mut max_key: Option<Key> = None;
+        let mut bottom_max_shared_kind = PrimitiveKind::Surface;
         let mut layer_depth = 0usize;
         for operation in operations {
             match operation {
@@ -424,7 +429,17 @@ impl Scene {
                         Some(bounds) => bounds.union(&primitive.clipped_bounds()),
                         None => primitive.clipped_bounds(),
                     });
-                    low_ordering = Some(low_ordering.map_or(ordering, |low| low.min(ordering)));
+                    match low_ordering {
+                        Some(low) if low < ordering => {}
+                        Some(low) if low == ordering => {
+                            bottom_max_shared_kind =
+                                bottom_max_shared_kind.min(key.kind.max_shared_kind());
+                        }
+                        _ => {
+                            low_ordering = Some(ordering);
+                            bottom_max_shared_kind = key.kind.max_shared_kind();
+                        }
+                    }
                     high_ordering = Some(high_ordering.map_or(ordering, |high| high.max(ordering)));
                     max_key = Some(max_key.map_or(key, |max_key| max_key.max(key)));
                 }
@@ -449,6 +464,7 @@ impl Scene {
                     low_ordering,
                     high_ordering,
                     max_key,
+                    bottom_max_shared_kind,
                 },
             ))
     }
@@ -1583,6 +1599,71 @@ mod tests {
         scene.insert_primitive(quad(5.));
         scene.pop_layer();
         assert_eq!(batch_labels(&mut scene), ["underlines (1)", "quads (1)"]);
+    }
+
+    fn oracle_operation(kind: replay_oracle::Kind, identity: u32, x: f32) -> replay_oracle::Op {
+        replay_oracle::Op::Primitive {
+            kind,
+            id: identity,
+            bounds: square(x),
+            content_mask: square(x),
+            texture: 0,
+        }
+    }
+
+    #[test]
+    fn one_insert_replay_bottom_quads_share_with_a_prefix_shadow() {
+        use replay_oracle::{Kind, draw_order_mismatch, paint};
+
+        let prefix = [
+            oracle_operation(Kind::Shadow, 1, 0.),
+            oracle_operation(Kind::Quad, 2, 30.),
+            oracle_operation(Kind::Underline, 3, 30.),
+        ];
+        let view = [
+            oracle_operation(Kind::Quad, 4, 0.),
+            oracle_operation(Kind::Quad, 5, 2.),
+        ];
+        let mut recorded = Scene::default();
+        paint(&mut recorded, &view);
+        recorded.finish();
+        let mut expected = Scene::default();
+        paint(&mut expected, &prefix);
+        paint(&mut expected, &view);
+        expected.finish();
+        let mut actual = Scene::default();
+        paint(&mut actual, &prefix);
+        actual.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        actual.finish();
+
+        assert!(actual.quads.iter().all(|quad| quad.order == 1));
+        assert_eq!(actual.batches().count(), 3);
+        assert_eq!(draw_order_mismatch(&expected, &actual), None);
+    }
+
+    #[test]
+    fn one_insert_replay_bottom_shadows_do_not_share_with_a_prefix_quad() {
+        use replay_oracle::{Kind, draw_order_mismatch, paint};
+
+        let prefix = [oracle_operation(Kind::Quad, 1, 0.)];
+        let view = [
+            oracle_operation(Kind::Shadow, 2, 0.),
+            oracle_operation(Kind::Shadow, 3, 2.),
+        ];
+        let mut recorded = Scene::default();
+        paint(&mut recorded, &view);
+        recorded.finish();
+        let mut expected = Scene::default();
+        paint(&mut expected, &prefix);
+        paint(&mut expected, &view);
+        expected.finish();
+        let mut actual = Scene::default();
+        paint(&mut actual, &prefix);
+        actual.replay_with_one_insert(0..recorded.len(), &recorded, 0);
+        actual.finish();
+
+        assert!(actual.shadows.iter().all(|shadow| shadow.order == 2));
+        assert_eq!(draw_order_mismatch(&expected, &actual), None);
     }
 
     #[test]
