@@ -20,6 +20,7 @@
 
 
 
+
 [[change]]
 name = "http-client-async-std-unstable"
 kind = "own"
@@ -74,4 +75,12 @@ kind = "own"
 zed_pr = 0
 head_sha = ""
 files = ["crates/gpui/Cargo.toml", "crates/gpui/examples/surface_framebuffer.rs", "crates/gpui_apple/src/metal_renderer.rs", "crates/gpui_apple/src/shaders.metal"]
+status = "tracking"
+
+[[change]]
+name = "cached-replay-bounds"
+kind = "own"
+zed_pr = 0
+head_sha = ""
+files = []
 status = "tracking"
