@@ -10,9 +10,13 @@
 //! color), so a sequence of draws can be compared across scenes.
 
 use super::*;
-use crate::{AtlasTextureId, AtlasTextureKind, Hsla, TileId, point, size};
+use crate::{
+    AtlasTextureId, AtlasTextureKind, Hsla, TileId, TimedTransformation, Transformation, point, px,
+    size,
+};
 use collections::FxHashMap;
 use rand::{Rng as _, rngs::StdRng};
+use std::time::Duration;
 
 /// Ids are encoded in a color's hue as `id / ID_SCALE`, exact in an `f32` below 2^24.
 const ID_SCALE: f32 = (1 << 20) as f32;
@@ -31,6 +35,12 @@ pub(super) enum Kind {
 pub(super) enum Op {
     Primitive {
         kind: Kind,
+        id: u32,
+        bounds: Bounds<ScaledPixels>,
+        content_mask: Bounds<ScaledPixels>,
+        texture: u32,
+    },
+    AnimatedSprite {
         id: u32,
         bounds: Bounds<ScaledPixels>,
         content_mask: Bounds<ScaledPixels>,
@@ -146,6 +156,43 @@ pub(super) fn paint(scene: &mut Scene, script: &[Op]) {
                 content_mask,
                 texture,
             } => scene.insert_primitive(primitive(kind, id, bounds, content_mask, texture)),
+            Op::AnimatedSprite {
+                id,
+                bounds,
+                content_mask,
+                texture,
+            } => {
+                let sprite = MonochromeSprite {
+                    order: 0,
+                    animation: SpriteAnimationId::NONE,
+                    tile: AtlasTile {
+                        texture_id: AtlasTextureId {
+                            index: texture,
+                            kind: AtlasTextureKind::Monochrome,
+                        },
+                        tile_id: TileId(id),
+                        padding: 0,
+                        bounds: Bounds::default(),
+                    },
+                    bounds,
+                    content_mask: ContentMask {
+                        bounds: content_mask,
+                    },
+                    color: id_color(0),
+                    transformation: TransformationMatrix::unit(),
+                };
+                scene.insert_animated_sprite(
+                    sprite,
+                    SpriteAnimation::new(
+                        TimedTransformation::rotation(
+                            Duration::from_secs(1),
+                            Transformation::default(),
+                        ),
+                        point(px(8.), px(8.)),
+                        1.,
+                    ),
+                );
+            }
             Op::StartLayer => scene.push_layer(),
             Op::EndLayer => scene.pop_layer(),
         }
@@ -378,6 +425,12 @@ mod tests {
     use super::*;
     use rand::SeedableRng as _;
 
+    type Replay = fn(&mut Scene, Range<usize>, &Scene);
+
+    fn per_operation_replay(scene: &mut Scene, range: Range<usize>, recorded: &Scene) {
+        scene.replay(range, recorded);
+    }
+
     fn square(id: u32, x: f32) -> Op {
         let bounds = Bounds {
             origin: point(ScaledPixels(x), ScaledPixels(0.)),
@@ -397,6 +450,182 @@ mod tests {
         paint(&mut scene, script);
         scene.finish();
         scene
+    }
+
+    fn assert_case(case: &ReplayCase, replay: Replay, description: impl std::fmt::Display) {
+        let replayed = case.replayed(replay);
+        if let Some(mismatch) = draw_order_mismatch(&case.rendered(), &replayed) {
+            panic!("{description}: {mismatch}");
+        }
+    }
+
+    fn random_case(seed: u64, shape: ScriptShape) -> ReplayCase {
+        let mut random = StdRng::seed_from_u64(seed);
+        ReplayCase::random(&mut random, shape)
+    }
+
+    fn layered_case(seed: u64, replay_inside_layer: bool) -> ReplayCase {
+        let mut random = StdRng::seed_from_u64(seed);
+        let shape = ScriptShape {
+            primitives: 24,
+            max_layer_depth: 2,
+            clip_chance: 0.35,
+        };
+        let mut next_id = 1;
+        let view = random_script(&mut random, shape, &mut next_id);
+        let mut recorded = Scene::default();
+        if !replay_inside_layer {
+            paint(&mut recorded, &[Op::StartLayer]);
+        }
+        let start = recorded.len();
+        paint(&mut recorded, &view);
+        let range = start..recorded.len();
+        if !replay_inside_layer {
+            paint(&mut recorded, &[Op::EndLayer]);
+        }
+        recorded.finish();
+
+        let mut before = Vec::new();
+        let mut after = Vec::new();
+        if replay_inside_layer {
+            before.push(Op::StartLayer);
+            after.push(Op::EndLayer);
+        } else {
+            before.push(Op::StartLayer);
+            after.push(Op::EndLayer);
+        }
+        ReplayCase {
+            recorded,
+            range,
+            before,
+            view,
+            after,
+        }
+    }
+
+    fn repeated_replay_case(seed: u64, frames: usize, replay: Replay) {
+        let case = random_case(
+            seed,
+            ScriptShape {
+                primitives: 30,
+                max_layer_depth: 2,
+                clip_chance: 0.45,
+            },
+        );
+        let expected = case.rendered();
+        let mut previous = case.recorded;
+        let mut range = case.range;
+        for frame in 0..frames {
+            let mut scene = Scene::default();
+            paint(&mut scene, &case.before);
+            replay(&mut scene, range.clone(), &previous);
+            let replayed_start = scene.len() - range.len();
+            paint(&mut scene, &case.after);
+            scene.finish();
+            if let Some(mismatch) = draw_order_mismatch(&expected, &scene) {
+                panic!("seed {seed}, frame {}: {mismatch}", frame + 1);
+            }
+            range = replayed_start..replayed_start + range.len();
+            previous = scene;
+        }
+    }
+
+    fn heavily_clipped_case(seed: u64) -> ReplayCase {
+        random_case(
+            seed,
+            ScriptShape {
+                primitives: 36,
+                max_layer_depth: 3,
+                clip_chance: 0.95,
+            },
+        )
+    }
+
+    fn all_kinds_shared_order_case(seed: u64) -> ReplayCase {
+        let mut random = StdRng::seed_from_u64(seed);
+        let mut next_id = 1;
+        let kinds = [
+            Kind::Shadow,
+            Kind::Quad,
+            Kind::Underline,
+            Kind::MonochromeSprite,
+            Kind::PolychromeSprite,
+        ];
+        let bounds = Bounds {
+            origin: point(ScaledPixels(16.), ScaledPixels(16.)),
+            size: size(ScaledPixels(128.), ScaledPixels(128.)),
+        };
+        let mut view = vec![Op::StartLayer];
+        for kind in kinds {
+            view.push(Op::Primitive {
+                kind,
+                id: next_id,
+                bounds,
+                content_mask: bounds,
+                texture: random.random_range(0..3),
+            });
+            next_id += 1;
+        }
+        view.push(Op::EndLayer);
+        let mut recorded = Scene::default();
+        paint(&mut recorded, &view);
+        let range = 0..recorded.len();
+        recorded.finish();
+        let before = vec![Op::Primitive {
+            kind: Kind::Quad,
+            id: next_id,
+            bounds,
+            content_mask: bounds,
+            texture: 0,
+        }];
+        next_id += 1;
+        let after = vec![Op::Primitive {
+            kind: Kind::Shadow,
+            id: next_id,
+            bounds,
+            content_mask: bounds,
+            texture: 0,
+        }];
+        ReplayCase {
+            recorded,
+            range,
+            before,
+            view,
+            after,
+        }
+    }
+
+    fn animated_case(seed: u64) -> ReplayCase {
+        let mut random = StdRng::seed_from_u64(seed);
+        let mut next_id = 1;
+        let mut view = Vec::new();
+        for _ in 0..8 {
+            let bounds = Bounds {
+                origin: point(
+                    ScaledPixels(random.random_range(0. ..128.)),
+                    ScaledPixels(random.random_range(0. ..128.)),
+                ),
+                size: size(ScaledPixels(16.), ScaledPixels(16.)),
+            };
+            view.push(Op::AnimatedSprite {
+                id: next_id,
+                bounds,
+                content_mask: bounds,
+                texture: random.random_range(0..3),
+            });
+            next_id += 1;
+        }
+        let mut recorded = Scene::default();
+        paint(&mut recorded, &view);
+        let range = 0..recorded.len();
+        recorded.finish();
+        ReplayCase {
+            recorded,
+            range,
+            before: vec![square(next_id, 0.)],
+            view,
+            after: vec![square(next_id + 1, 4.)],
+        }
     }
 
     #[test]
@@ -420,30 +649,131 @@ mod tests {
         assert!(draw_order_mismatch(&expected, &missing).is_some());
     }
 
-    /// The baseline every faster replay must meet: replaying a recorded range
-    /// draws like painting it again.
     #[test]
-    fn per_operation_replay_draws_like_a_full_render() {
-        let shapes = [
-            ScriptShape {
-                primitives: 40,
-                max_layer_depth: 0,
-                clip_chance: 0.,
-            },
-            ScriptShape {
-                primitives: 120,
-                max_layer_depth: 3,
-                clip_chance: 0.2,
-            },
+    fn replay_oracle_equal_keys_preserve_layer_push_order() {
+        let view = vec![
+            Op::StartLayer,
+            Op::StartLayer,
+            square(1, 0.),
+            Op::EndLayer,
+            square(2, 5.),
+            Op::EndLayer,
         ];
-        for seed in 0..300 {
-            let mut rng = StdRng::seed_from_u64(seed);
-            let shape = shapes[seed as usize % shapes.len()];
-            let case = ReplayCase::random(&mut rng, shape);
-            let replayed = case.replayed(|scene, range, recorded| scene.replay(range, recorded));
-            if let Some(mismatch) = draw_order_mismatch(&case.rendered(), &replayed) {
-                panic!("seed {seed}: {mismatch}");
+        let recorded = finished(&view);
+        assert_eq!(recorded.quads.len(), 2);
+        assert!(
+            recorded
+                .quads
+                .windows(2)
+                .all(|pair| pair[0].order == pair[1].order)
+        );
+        assert_eq!(
+            draw_sequence(&recorded)
+                .iter()
+                .map(|drawn| drawn.id)
+                .collect::<Vec<_>>(),
+            [2, 1],
+            "equal-key quads retain the outer-first layer flush order",
+        );
+        let case = ReplayCase {
+            range: 0..recorded.len(),
+            recorded,
+            before: Vec::new(),
+            view,
+            after: Vec::new(),
+        };
+        assert_case(&case, per_operation_replay, "equal-key nested layers");
+    }
+
+    #[test]
+    fn replay_oracle_random_and_no_prefix_cases() {
+        for seed in 0..250 {
+            let mut case = random_case(
+                seed,
+                ScriptShape {
+                    primitives: 28,
+                    max_layer_depth: 2,
+                    clip_chance: 0.25,
+                },
+            );
+            if seed % 2 == 0 {
+                case.before.clear();
             }
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+        }
+    }
+
+    #[test]
+    fn replay_oracle_animated_sprite_cases() {
+        for seed in 250..500 {
+            let case = animated_case(seed);
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+        }
+    }
+
+    #[test]
+    fn replay_oracle_ranges_recorded_inside_layers() {
+        for seed in 500..750 {
+            let case = layered_case(seed, false);
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+        }
+    }
+
+    #[test]
+    fn replay_oracle_ranges_replayed_inside_layers() {
+        for seed in 750..1000 {
+            let case = layered_case(seed, true);
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+        }
+    }
+
+    #[test]
+    fn replay_oracle_replays_of_replays() {
+        for seed in 1000..1250 {
+            repeated_replay_case(seed, 2, per_operation_replay);
+            repeated_replay_case(seed, 3, per_operation_replay);
+        }
+    }
+
+    #[test]
+    fn replay_oracle_empty_ranges() {
+        for seed in 1250..1500 {
+            let mut case = random_case(
+                seed,
+                ScriptShape {
+                    primitives: 20,
+                    max_layer_depth: 1,
+                    clip_chance: 0.2,
+                },
+            );
+            case.range = 0..0;
+            case.view.clear();
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+        }
+    }
+
+    #[test]
+    fn replay_oracle_prefixes_covering_everything() {
+        for seed in 1500..1750 {
+            let mut case = all_kinds_shared_order_case(seed);
+            case.before.extend(case.before.clone());
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+        }
+    }
+
+    #[test]
+    fn replay_oracle_all_kinds_sharing_orderings() {
+        for seed in 1750..2000 {
+            let case = all_kinds_shared_order_case(seed);
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
+        }
+    }
+
+    #[test]
+    fn replay_oracle_heavy_clipping_cases() {
+        for seed in 2000..2250 {
+            let case = heavily_clipped_case(seed);
+            assert_case(&case, per_operation_replay, format_args!("seed {seed}"));
         }
     }
 }
