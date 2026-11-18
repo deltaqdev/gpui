@@ -283,7 +283,9 @@ impl Scene {
     ///
     /// `recorded_layer_depth` is the source scene's layer depth at `range.start`.
     /// If it is nonzero, this scene has an open layer, or the range has unbalanced
-    /// layers, this falls back to [`Self::replay`].
+    /// layers, this falls back to [`Self::replay`]. It is not checked: a range
+    /// recorded inside a layer but passed as depth 0 is replayed as if its layer's
+    /// primitives were top-level, and can draw overlapping primitives out of order.
     pub fn replay_with_one_insert(
         &mut self,
         range: Range<usize>,
@@ -1876,6 +1878,9 @@ mod tests {
 
 #[cfg(test)]
 mod replay_oracle;
+
+#[cfg(test)]
+mod replay_multi_view_tests;
 
 #[cfg(test)]
 mod composition_replay_tests {

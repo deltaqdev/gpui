@@ -22,6 +22,7 @@
 
 
 
+
 [[change]]
 name = "http-client-async-std-unstable"
 kind = "own"
@@ -83,5 +84,5 @@ name = "cached-replay-bounds"
 kind = "own"
 zed_pr = 0
 head_sha = ""
-files = ["crates/gpui/src/bounds_tree.rs", "crates/gpui/src/scene.rs", "crates/gpui/src/scene/replay_oracle.rs", "crates/gpui/src/window.rs", "crates/gpui/src/window/cached_replay_tests.rs", "crates/gpui_platform/Cargo.toml", "crates/gpui_platform/benches/scene_replay.rs"]
+files = ["crates/gpui/src/bounds_tree.rs", "crates/gpui/src/scene.rs", "crates/gpui/src/scene/replay_multi_view_tests.rs", "crates/gpui/src/scene/replay_oracle.rs", "crates/gpui/src/window.rs", "crates/gpui/src/window/cached_replay_tests.rs", "crates/gpui_platform/Cargo.toml", "crates/gpui_platform/benches/scene_replay.rs"]
 status = "tracking"

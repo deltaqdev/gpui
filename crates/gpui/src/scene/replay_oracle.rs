@@ -28,6 +28,7 @@ pub(super) enum Kind {
     Quad,
     Underline,
     MonochromeSprite,
+    SubpixelSprite,
     PolychromeSprite,
 }
 
@@ -124,6 +125,16 @@ fn primitive(
         Kind::MonochromeSprite => MonochromeSprite {
             order: 0,
             animation: SpriteAnimationId::NONE,
+            tile,
+            bounds,
+            content_mask,
+            color: id_color(0),
+            transformation: TransformationMatrix::unit(),
+        }
+        .into(),
+        Kind::SubpixelSprite => SubpixelSprite {
+            order: 0,
+            pad: 0,
             tile,
             bounds,
             content_mask,
@@ -248,9 +259,16 @@ pub(super) fn draw_sequence(scene: &Scene) -> Vec<Drawn> {
                     );
                 }
             }
-            PrimitiveBatch::Paths(_)
-            | PrimitiveBatch::SubpixelSprites { .. }
-            | PrimitiveBatch::Surfaces(_) => {
+            PrimitiveBatch::SubpixelSprites { range, .. } => {
+                for sprite in &scene.subpixel_sprites[range] {
+                    push(
+                        Kind::SubpixelSprite,
+                        sprite.tile.tile_id.0,
+                        (*sprite).into(),
+                    );
+                }
+            }
+            PrimitiveBatch::Paths(_) | PrimitiveBatch::Surfaces(_) => {
                 panic!("oracle fixtures paint no paths, subpixel sprites or surfaces")
             }
         }
