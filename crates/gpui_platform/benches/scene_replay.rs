@@ -72,21 +72,32 @@ fn fixtures() -> Vec<Fixture> {
 #[derive(Clone, Copy)]
 enum Strategy {
     PerOperation,
+    OneInsert,
+    OneInsertAfterReplay,
 }
 
 impl fmt::Display for Strategy {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Strategy::PerOperation => write!(formatter, "per-operation"),
+            Strategy::OneInsert => write!(formatter, "one-insert"),
+            Strategy::OneInsertAfterReplay => write!(formatter, "one-insert-after-replay"),
         }
     }
 }
 
-const STRATEGIES: [Strategy; 1] = [Strategy::PerOperation];
+const STRATEGIES: [Strategy; 3] = [
+    Strategy::PerOperation,
+    Strategy::OneInsert,
+    Strategy::OneInsertAfterReplay,
+];
 
 fn replay(strategy: Strategy, scene: &mut Scene, range: Range<usize>, recorded: &Scene) {
     match strategy {
         Strategy::PerOperation => scene.replay(range, recorded),
+        Strategy::OneInsert | Strategy::OneInsertAfterReplay => {
+            scene.replay_with_one_insert(range, recorded, 0);
+        }
     }
 }
 
@@ -291,6 +302,22 @@ fn record(fixture: Fixture) -> (Scene, Range<usize>) {
     (recorded, range)
 }
 
+fn record_for_strategy(fixture: Fixture, strategy: Strategy) -> (Scene, Range<usize>) {
+    let (recorded, range) = record(fixture);
+    if matches!(strategy, Strategy::OneInsertAfterReplay) {
+        let mut replayed = Scene::default();
+        paint_before(&mut replayed);
+        let start = replayed.len();
+        replayed.replay_with_one_insert(range, &recorded, 0);
+        let range = start..replayed.len();
+        paint_after(&mut replayed);
+        replayed.finish();
+        (replayed, range)
+    } else {
+        (recorded, range)
+    }
+}
+
 fn replayed_frame(
     strategy: Strategy,
     scene: &mut Scene,
@@ -314,13 +341,14 @@ fn bench_replay(
 ) {
     let mut group = criterion.benchmark_group(group_name);
     for fixture in fixtures() {
-        let mut recording = None;
         for strategy in STRATEGIES {
+            let mut recording = None;
             let report = bench_metrics::MetricReport::new();
             group.bench_function(format!("{fixture}/{strategy}"), |bencher| {
                 // Criterion calls this only for selected cases, so --list and
                 // filters do not record every fixture.
-                let (recorded, range) = recording.get_or_insert_with(|| record(fixture));
+                let (recorded, range) =
+                    recording.get_or_insert_with(|| record_for_strategy(fixture, strategy));
                 let mut scene = Scene::default();
                 report.iter(bencher, || {
                     replayed_frame(strategy, &mut scene, range.clone(), recorded, finish);
@@ -328,12 +356,10 @@ fn bench_replay(
                 });
             });
             report.print("  ");
-        }
-        if finish
-            && std::env::var("GPUI_BENCH_SCENE_STATS").as_deref() == Ok("1")
-            && let Some((recorded, range)) = &recording
-        {
-            for strategy in STRATEGIES {
+            if finish
+                && std::env::var("GPUI_BENCH_SCENE_STATS").as_deref() == Ok("1")
+                && let Some((recorded, range)) = &recording
+            {
                 let mut scene = Scene::default();
                 replayed_frame(strategy, &mut scene, range.clone(), recorded, true);
                 eprintln!(

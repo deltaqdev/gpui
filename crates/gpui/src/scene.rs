@@ -283,8 +283,11 @@ impl Scene {
     }
 
     /// Replays a balanced, top-level range with one bounds-tree insertion.
-    /// Falls back to per-operation replay when either boundary is inside a layer.
-    pub(crate) fn replay_with_one_insert(
+    ///
+    /// `recorded_layer_depth` is the source scene's layer depth at `range.start`.
+    /// If it is nonzero, this scene has an open layer, or the range has unbalanced
+    /// layers, this falls back to [`Self::replay`].
+    pub fn replay_with_one_insert(
         &mut self,
         range: Range<usize>,
         previous_scene: &Scene,
