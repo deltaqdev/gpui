@@ -140,6 +140,10 @@ impl Scene {
         self.paint_operations.len()
     }
 
+    pub(crate) fn layer_depth(&self) -> usize {
+        self.layer_stack.len()
+    }
+
     /// Returns whether the scene contains no drawable primitives.
     ///
     /// A scene may have paint operations that only open and close empty layers,
